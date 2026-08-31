@@ -1,12 +1,24 @@
 //! Convert a static ELF32 executable into an MZ (MS-DOS) executable.
 
-#[derive(Default)]
 pub struct MzSpec {
     pub min_alloc: u16,
     pub max_alloc: u16,
 }
 
+impl Default for MzSpec {
+    fn default() -> Self {
+        Self {
+            min_alloc: 0,
+            max_alloc: 0xFFFF,
+        }
+    }
+}
+
 pub fn convert(_elf: &[u8], spec: &MzSpec) -> Result<Vec<u8>, Error> {
+    if spec.max_alloc < spec.min_alloc {
+        return Err(Error::MaxAllocLessThanMinAlloc);
+    }
+
     const WORD_WIDTH: usize = 2;
 
     let mut out = vec![0u8; 14];
@@ -26,11 +38,13 @@ pub fn convert(_elf: &[u8], spec: &MzSpec) -> Result<Vec<u8>, Error> {
 }
 
 #[derive(Debug)]
-pub enum Error {}
+pub enum Error {
+    MaxAllocLessThanMinAlloc,
+}
 
 #[cfg(test)]
 mod tests {
-    use crate::{convert, MzSpec};
+    use crate::{convert, Error, MzSpec};
 
     #[test]
     fn convert_produces_mz_magic() {
@@ -78,5 +92,15 @@ mod tests {
                 "expected max_alloc to be {expected} for {desc}"
             );
         }
+    }
+
+    #[test]
+    fn convert_rejects_max_alloc_less_than_min_alloc() {
+        let spec = MzSpec {
+            min_alloc: 0x0100,
+            max_alloc: 0x00ff,
+        };
+        let result = convert(&[0x90], &spec);
+        assert!(matches!(result, Err(Error::MaxAllocLessThanMinAlloc)));
     }
 }
