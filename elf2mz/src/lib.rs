@@ -3,6 +3,8 @@
 pub struct MzSpec {
     min_alloc: u16,
     max_alloc: u16,
+    entry_ip: u16,
+    entry_cs: u16,
 }
 
 impl MzSpec {
@@ -17,11 +19,21 @@ impl MzSpec {
     pub fn max_alloc(&self) -> u16 {
         self.max_alloc
     }
+
+    pub fn entry_ip(&self) -> u16 {
+        self.entry_ip
+    }
+
+    pub fn entry_cs(&self) -> u16 {
+        self.entry_cs
+    }
 }
 
 pub struct MzSpecBuilder {
     min_alloc: u16,
     max_alloc: u16,
+    entry_ip: u16,
+    entry_cs: u16,
 }
 
 impl Default for MzSpecBuilder {
@@ -29,6 +41,8 @@ impl Default for MzSpecBuilder {
         Self {
             min_alloc: 0,
             max_alloc: 0xFFFF,
+            entry_ip: 0,
+            entry_cs: 0,
         }
     }
 }
@@ -44,6 +58,16 @@ impl MzSpecBuilder {
         self
     }
 
+    pub fn entry_ip(mut self, entry_ip: u16) -> Self {
+        self.entry_ip = entry_ip;
+        self
+    }
+
+    pub fn entry_cs(mut self, entry_cs: u16) -> Self {
+        self.entry_cs = entry_cs;
+        self
+    }
+
     pub fn build(self) -> Result<MzSpec, Error> {
         if self.max_alloc < self.min_alloc {
             return Err(Error::MaxAllocLessThanMinAlloc);
@@ -51,6 +75,8 @@ impl MzSpecBuilder {
         Ok(MzSpec {
             min_alloc: self.min_alloc,
             max_alloc: self.max_alloc,
+            entry_ip: self.entry_ip,
+            entry_cs: self.entry_cs,
         })
     }
 }
@@ -58,7 +84,7 @@ impl MzSpecBuilder {
 pub fn convert(_elf: &[u8], spec: &MzSpec) -> Result<Vec<u8>, Error> {
     const WORD_WIDTH: usize = 2;
 
-    let mut out = vec![0u8; 14];
+    let mut out = vec![0u8; 24];
 
     const OFFSET_MAGIC: usize = 0;
     const MZ_MAGIC: &[u8; 2] = b"MZ";
@@ -71,6 +97,14 @@ pub fn convert(_elf: &[u8], spec: &MzSpec) -> Result<Vec<u8>, Error> {
     const OFFSET_MAX_ALLOC: usize = 12;
     out[OFFSET_MAX_ALLOC..OFFSET_MAX_ALLOC + WORD_WIDTH]
         .copy_from_slice(&spec.max_alloc().to_le_bytes());
+
+    const OFFSET_ENTRY_IP: usize = 20;
+    out[OFFSET_ENTRY_IP..OFFSET_ENTRY_IP + WORD_WIDTH]
+        .copy_from_slice(&spec.entry_ip().to_le_bytes());
+
+    const OFFSET_ENTRY_CS: usize = 22;
+    out[OFFSET_ENTRY_CS..OFFSET_ENTRY_CS + WORD_WIDTH]
+        .copy_from_slice(&spec.entry_cs().to_le_bytes());
     Ok(out)
 }
 
@@ -133,27 +167,75 @@ mod tests {
     }
 
     #[test]
+    fn convert_writes_entry_ip_from_spec() {
+        let cases = [
+            (0x0000u16, 0x0000u16, "minimum boundary"),
+            (0x0010u16, 0x0010u16, "typical value"),
+            (0xffffu16, 0xffffu16, "maximum boundary"),
+        ];
+        for (entry_ip, expected, desc) in cases {
+            let spec = MzSpec::builder()
+                .entry_ip(entry_ip)
+                .build()
+                .expect("builder should succeed");
+            let mz = convert(&[0x90], &spec).expect("convert should succeed");
+            let written = u16::from_le_bytes([mz[20], mz[21]]);
+            assert_eq!(
+                written, expected,
+                "expected entry_ip to be {expected} for {desc}"
+            );
+        }
+    }
+
+    #[test]
+    fn convert_writes_entry_cs_from_spec() {
+        let cases = [
+            (0x0000u16, 0x0000u16, "minimum boundary"),
+            (0x0010u16, 0x0010u16, "typical value"),
+            (0xffffu16, 0xffffu16, "maximum boundary"),
+        ];
+        for (entry_cs, expected, desc) in cases {
+            let spec = MzSpec::builder()
+                .entry_cs(entry_cs)
+                .build()
+                .expect("builder should succeed");
+            let mz = convert(&[0x90], &spec).expect("convert should succeed");
+            let written = u16::from_le_bytes([mz[22], mz[23]]);
+            assert_eq!(
+                written, expected,
+                "expected entry_cs to be {expected} for {desc}"
+            );
+        }
+    }
+
+    #[test]
     fn builder_uses_correct_default_values() {
         let spec = MzSpec::builder().build().expect("builder should succeed");
         assert_eq!(spec.min_alloc(), 0);
         assert_eq!(spec.max_alloc(), 0xFFFF);
+        assert_eq!(spec.entry_ip(), 0);
+        assert_eq!(spec.entry_cs(), 0);
     }
 
     #[test]
     fn builder_sets_valid_values() {
         let cases = [
-            (0x0000u16, 0x0000u16, "minimum boundary"),
-            (0x0040u16, 0x0100u16, "typical values"),
-            (0xffffu16, 0xffffu16, "maximum boundary"),
+            (0x0000, 0x0000, 0x0000, 0x0000, "minimum boundary"),
+            (0x0040, 0x0100, 0x0010, 0x0020, "typical values"),
+            (0xffff, 0xffff, 0xffff, 0xffff, "maximum boundary"),
         ];
-        for (min_alloc, max_alloc, desc) in cases {
+        for (min_alloc, max_alloc, entry_ip, entry_cs, desc) in cases {
             let spec = MzSpec::builder()
                 .min_alloc(min_alloc)
                 .max_alloc(max_alloc)
+                .entry_ip(entry_ip)
+                .entry_cs(entry_cs)
                 .build()
                 .expect("builder should succeed");
             assert_eq!(spec.min_alloc(), min_alloc, "min_alloc for {desc}");
             assert_eq!(spec.max_alloc(), max_alloc, "max_alloc for {desc}");
+            assert_eq!(spec.entry_ip(), entry_ip, "entry_ip for {desc}");
+            assert_eq!(spec.entry_cs(), entry_cs, "entry_cs for {desc}");
         }
     }
 
