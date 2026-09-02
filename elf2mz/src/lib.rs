@@ -5,6 +5,8 @@ pub struct MzSpec {
     max_alloc: u16,
     entry_ip: u16,
     entry_cs: u16,
+    stack_ss: u16,
+    stack_sp: u16,
 }
 
 impl MzSpec {
@@ -27,6 +29,14 @@ impl MzSpec {
     pub fn entry_cs(&self) -> u16 {
         self.entry_cs
     }
+
+    pub fn stack_ss(&self) -> u16 {
+        self.stack_ss
+    }
+
+    pub fn stack_sp(&self) -> u16 {
+        self.stack_sp
+    }
 }
 
 pub struct MzSpecBuilder {
@@ -34,6 +44,8 @@ pub struct MzSpecBuilder {
     max_alloc: u16,
     entry_ip: u16,
     entry_cs: u16,
+    stack_ss: u16,
+    stack_sp: u16,
     strictness: Strictness,
 }
 
@@ -52,6 +64,8 @@ impl Default for MzSpecBuilder {
             max_alloc: 0xFFFF,
             entry_ip: 0,
             entry_cs: 0,
+            stack_ss: 0,
+            stack_sp: 0,
             strictness: Strictness::Error,
         }
     }
@@ -78,6 +92,16 @@ impl MzSpecBuilder {
         self
     }
 
+    pub fn stack_ss(mut self, stack_ss: u16) -> Self {
+        self.stack_ss = stack_ss;
+        self
+    }
+
+    pub fn stack_sp(mut self, stack_sp: u16) -> Self {
+        self.stack_sp = stack_sp;
+        self
+    }
+
     pub fn strictness(mut self, strictness: Strictness) -> Self {
         self.strictness = strictness;
         self
@@ -99,11 +123,16 @@ impl MzSpecBuilder {
         if self.entry_cs == 0xFFFF {
             enforce(self.strictness, Error::EntryCsAtTopOfMemory)?;
         }
+        if self.stack_ss == 0xFFFF {
+            enforce(self.strictness, Error::StackSsAtTopOfMemory)?;
+        }
         Ok(MzSpec {
             min_alloc: self.min_alloc,
             max_alloc: self.max_alloc,
             entry_ip: self.entry_ip,
             entry_cs: self.entry_cs,
+            stack_ss: self.stack_ss,
+            stack_sp: self.stack_sp,
         })
     }
 }
@@ -136,6 +165,14 @@ pub fn convert(_elf: &[u8], spec: &MzSpec) -> Result<Vec<u8>, Error> {
     out[OFFSET_MAX_ALLOC..OFFSET_MAX_ALLOC + WORD_WIDTH]
         .copy_from_slice(&spec.max_alloc().to_le_bytes());
 
+    const OFFSET_STACK_SS: usize = 14;
+    out[OFFSET_STACK_SS..OFFSET_STACK_SS + WORD_WIDTH]
+        .copy_from_slice(&spec.stack_ss().to_le_bytes());
+
+    const OFFSET_STACK_SP: usize = 16;
+    out[OFFSET_STACK_SP..OFFSET_STACK_SP + WORD_WIDTH]
+        .copy_from_slice(&spec.stack_sp().to_le_bytes());
+
     const OFFSET_ENTRY_IP: usize = 20;
     out[OFFSET_ENTRY_IP..OFFSET_ENTRY_IP + WORD_WIDTH]
         .copy_from_slice(&spec.entry_ip().to_le_bytes());
@@ -151,6 +188,7 @@ pub enum Error {
     MaxAllocLessThanMinAlloc { min_alloc: u16, max_alloc: u16 },
     EntryIpAtLastByteOfSegment,
     EntryCsAtTopOfMemory,
+    StackSsAtTopOfMemory,
 }
 
 impl std::fmt::Display for Error {
@@ -173,6 +211,11 @@ impl std::fmt::Display for Error {
                 f,
                 "entry_cs 0xFFFF aims the code segment at the top of the 1 MiB map (0xFFFF0); the \
                  loader would relocate it into unmapped memory"
+            ),
+            Self::StackSsAtTopOfMemory => write!(
+                f,
+                "stack_ss 0xFFFF aims the stack segment at the top of the 1 MiB map (0xFFFF0); \
+                 the loader would relocate it into unmapped memory"
             ),
         }
     }
@@ -276,33 +319,106 @@ mod tests {
     }
 
     #[test]
+    fn convert_writes_stack_ss_from_spec() {
+        let cases = [
+            (0x0000u16, 0x0000u16, "minimum boundary"),
+            (0x0010u16, 0x0010u16, "typical value"),
+            (0xffffu16, 0xffffu16, "maximum boundary"),
+        ];
+        for (stack_ss, expected, desc) in cases {
+            let spec = MzSpec::builder()
+                .strictness(Strictness::Allow)
+                .stack_ss(stack_ss)
+                .build()
+                .expect("builder should succeed");
+            let mz = convert(&[0x90], &spec).expect("convert should succeed");
+            let written = u16::from_le_bytes([mz[14], mz[15]]);
+            assert_eq!(
+                written, expected,
+                "expected stack_ss to be {expected} for {desc}"
+            );
+        }
+    }
+
+    #[test]
+    fn convert_writes_stack_sp_from_spec() {
+        let cases = [
+            (0x0000u16, 0x0000u16, "minimum boundary"),
+            (0x0010u16, 0x0010u16, "typical value"),
+            (0xffffu16, 0xffffu16, "maximum boundary"),
+        ];
+        for (stack_sp, expected, desc) in cases {
+            let spec = MzSpec::builder()
+                .stack_sp(stack_sp)
+                .build()
+                .expect("builder should succeed");
+            let mz = convert(&[0x90], &spec).expect("convert should succeed");
+            let written = u16::from_le_bytes([mz[16], mz[17]]);
+            assert_eq!(
+                written, expected,
+                "expected stack_sp to be {expected} for {desc}"
+            );
+        }
+    }
+
+    #[test]
     fn builder_uses_correct_default_values() {
         let spec = MzSpec::builder().build().expect("builder should succeed");
         assert_eq!(spec.min_alloc(), 0);
         assert_eq!(spec.max_alloc(), 0xFFFF);
         assert_eq!(spec.entry_ip(), 0);
         assert_eq!(spec.entry_cs(), 0);
+        assert_eq!(spec.stack_ss(), 0);
+        assert_eq!(spec.stack_sp(), 0);
     }
 
     #[test]
     fn builder_sets_valid_values() {
         let cases = [
-            (0x0000, 0x0000, 0x0000, 0x0000, "minimum boundary"),
-            (0x0040, 0x0100, 0x0010, 0x0020, "typical values"),
-            (0xffff, 0xffff, 0xfffe, 0xfffe, "maximum valid boundary"),
+            (
+                0x0000,
+                0x0000,
+                0x0000,
+                0x0000,
+                0x0000,
+                0x0000,
+                "minimum boundary",
+            ),
+            (
+                0x0040,
+                0x0100,
+                0x0010,
+                0x0020,
+                0x0000,
+                0x1000,
+                "typical values",
+            ),
+            (
+                0xffff,
+                0xffff,
+                0xfffe,
+                0xfffe,
+                0xfffe,
+                0xfffe,
+                "maximum valid boundary",
+            ),
         ];
-        for (min_alloc, max_alloc, entry_ip, entry_cs, desc) in cases {
+        for (min_alloc, max_alloc, entry_ip, entry_cs, stack_ss, stack_sp, desc) in cases {
             let spec = MzSpec::builder()
                 .min_alloc(min_alloc)
                 .max_alloc(max_alloc)
                 .entry_ip(entry_ip)
                 .entry_cs(entry_cs)
+                .stack_ss(stack_ss)
+                .stack_sp(stack_sp)
                 .build()
                 .expect("builder should succeed");
             assert_eq!(spec.min_alloc(), min_alloc, "min_alloc for {desc}");
             assert_eq!(spec.max_alloc(), max_alloc, "max_alloc for {desc}");
             assert_eq!(spec.entry_ip(), entry_ip, "entry_ip for {desc}");
             assert_eq!(spec.entry_cs(), entry_cs, "entry_cs for {desc}");
+            assert_eq!(spec.stack_ss(), stack_ss, "stack_ss for {desc}");
+            assert_eq!(spec.stack_sp(), stack_sp, "stack_sp for {desc}");
         }
     }
 
@@ -334,6 +450,12 @@ mod tests {
     }
 
     #[test]
+    fn builder_rejects_stack_ss_at_top_of_memory() {
+        let result = MzSpec::builder().stack_ss(0xffff).build();
+        assert!(matches!(result, Err(Error::StackSsAtTopOfMemory)));
+    }
+
+    #[test]
     fn builder_strictness_allow_skips_validation() {
         let result = MzSpec::builder()
             .strictness(Strictness::Allow)
@@ -341,6 +463,7 @@ mod tests {
             .max_alloc(0x00ff)
             .entry_ip(0xffff)
             .entry_cs(0xffff)
+            .stack_ss(0xffff)
             .build();
         assert!(result.is_ok());
     }
