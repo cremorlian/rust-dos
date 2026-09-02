@@ -150,48 +150,57 @@ fn enforce(strictness: Strictness, error: Error) -> Result<(), Error> {
 
 pub fn convert(_elf: &[u8], spec: &MzSpec) -> Result<Vec<u8>, Error> {
     const WORD_WIDTH: usize = 2;
+    const PARAGRAPH: usize = 16;
+    const HEADER_SIZE: usize = 32;
 
-    let mut out = vec![0u8; 28];
+    let mut out = vec![0u8; HEADER_SIZE];
+
+    let write_word = |out: &mut [u8], offset: usize, value: u16| {
+        out[offset..offset + WORD_WIDTH].copy_from_slice(&value.to_le_bytes());
+    };
 
     const OFFSET_MAGIC: usize = 0;
     const MZ_MAGIC: &[u8; 2] = b"MZ";
     out[OFFSET_MAGIC..OFFSET_MAGIC + WORD_WIDTH].copy_from_slice(MZ_MAGIC);
 
+    const OFFSET_CRLC: usize = 6;
+    const NO_RELOCATIONS: u16 = 0;
+    write_word(&mut out, OFFSET_CRLC, NO_RELOCATIONS);
+
+    const OFFSET_CPARHDR: usize = 8;
+    const HEADER_PARAGRAPHS: u16 = (HEADER_SIZE / PARAGRAPH) as u16;
+    write_word(&mut out, OFFSET_CPARHDR, HEADER_PARAGRAPHS);
+
     const OFFSET_MIN_ALLOC: usize = 10;
-    out[OFFSET_MIN_ALLOC..OFFSET_MIN_ALLOC + WORD_WIDTH]
-        .copy_from_slice(&spec.min_alloc().to_le_bytes());
+    write_word(&mut out, OFFSET_MIN_ALLOC, spec.min_alloc());
 
     const OFFSET_MAX_ALLOC: usize = 12;
-    out[OFFSET_MAX_ALLOC..OFFSET_MAX_ALLOC + WORD_WIDTH]
-        .copy_from_slice(&spec.max_alloc().to_le_bytes());
+    write_word(&mut out, OFFSET_MAX_ALLOC, spec.max_alloc());
 
     const OFFSET_STACK_SS: usize = 14;
-    out[OFFSET_STACK_SS..OFFSET_STACK_SS + WORD_WIDTH]
-        .copy_from_slice(&spec.stack_ss().to_le_bytes());
+    write_word(&mut out, OFFSET_STACK_SS, spec.stack_ss());
 
     const OFFSET_STACK_SP: usize = 16;
-    out[OFFSET_STACK_SP..OFFSET_STACK_SP + WORD_WIDTH]
-        .copy_from_slice(&spec.stack_sp().to_le_bytes());
-
-    const OFFSET_CRLC: usize = 6;
-    out[OFFSET_CRLC..OFFSET_CRLC + WORD_WIDTH].copy_from_slice(&0u16.to_le_bytes());
+    write_word(&mut out, OFFSET_STACK_SP, spec.stack_sp());
 
     const OFFSET_CSUM: usize = 18;
-    out[OFFSET_CSUM..OFFSET_CSUM + WORD_WIDTH].copy_from_slice(&0u16.to_le_bytes());
-
-    const OFFSET_LFARLC: usize = 24;
-    out[OFFSET_LFARLC..OFFSET_LFARLC + WORD_WIDTH].copy_from_slice(&0u16.to_le_bytes());
-
-    const OFFSET_OVNO: usize = 26;
-    out[OFFSET_OVNO..OFFSET_OVNO + WORD_WIDTH].copy_from_slice(&0u16.to_le_bytes());
+    const NO_CHECKSUM: u16 = 0;
+    write_word(&mut out, OFFSET_CSUM, NO_CHECKSUM);
 
     const OFFSET_ENTRY_IP: usize = 20;
-    out[OFFSET_ENTRY_IP..OFFSET_ENTRY_IP + WORD_WIDTH]
-        .copy_from_slice(&spec.entry_ip().to_le_bytes());
+    write_word(&mut out, OFFSET_ENTRY_IP, spec.entry_ip());
 
     const OFFSET_ENTRY_CS: usize = 22;
-    out[OFFSET_ENTRY_CS..OFFSET_ENTRY_CS + WORD_WIDTH]
-        .copy_from_slice(&spec.entry_cs().to_le_bytes());
+    write_word(&mut out, OFFSET_ENTRY_CS, spec.entry_cs());
+
+    const OFFSET_LFARLC: usize = 24;
+    const NO_RELOCATION_TABLE: u16 = 0;
+    write_word(&mut out, OFFSET_LFARLC, NO_RELOCATION_TABLE);
+
+    const OFFSET_OVNO: usize = 26;
+    const NO_OVERLAY: u16 = 0;
+    write_word(&mut out, OFFSET_OVNO, NO_OVERLAY);
+
     Ok(out)
 }
 
@@ -387,6 +396,25 @@ mod tests {
         let mz = convert(&[0x90], &spec).expect("convert should succeed");
         let written = u16::from_le_bytes([mz[18], mz[19]]);
         assert_eq!(written, 0, "e_csum must be zero (no checksum)");
+    }
+
+    #[test]
+    fn convert_writes_cparhdr_as_two() {
+        let spec = MzSpec::builder().build().expect("builder should succeed");
+        let mz = convert(&[0x90], &spec).expect("convert should succeed");
+        let written = u16::from_le_bytes([mz[8], mz[9]]);
+        assert_eq!(written, 2, "e_cparhdr must be 2 (32-byte padded header)");
+    }
+
+    #[test]
+    fn convert_pads_header_to_paragraph_boundary() {
+        let spec = MzSpec::builder().build().expect("builder should succeed");
+        let mz = convert(&[0x90], &spec).expect("convert should succeed");
+        assert_eq!(
+            mz.len(),
+            32,
+            "28-byte header must be padded to a whole 16-byte paragraph"
+        );
     }
 
     #[test]
