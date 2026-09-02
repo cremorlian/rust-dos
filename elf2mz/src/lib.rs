@@ -34,6 +34,15 @@ pub struct MzSpecBuilder {
     max_alloc: u16,
     entry_ip: u16,
     entry_cs: u16,
+    strictness: Strictness,
+}
+
+#[derive(Debug, Copy, Clone, Default)]
+pub enum Strictness {
+    #[default]
+    Error,
+    Warn,
+    Allow,
 }
 
 impl Default for MzSpecBuilder {
@@ -43,6 +52,7 @@ impl Default for MzSpecBuilder {
             max_alloc: 0xFFFF,
             entry_ip: 0,
             entry_cs: 0,
+            strictness: Strictness::Error,
         }
     }
 }
@@ -68,9 +78,26 @@ impl MzSpecBuilder {
         self
     }
 
+    pub fn strictness(mut self, strictness: Strictness) -> Self {
+        self.strictness = strictness;
+        self
+    }
+
     pub fn build(self) -> Result<MzSpec, Error> {
         if self.max_alloc < self.min_alloc {
-            return Err(Error::MaxAllocLessThanMinAlloc);
+            enforce(
+                self.strictness,
+                Error::MaxAllocLessThanMinAlloc {
+                    min_alloc: self.min_alloc,
+                    max_alloc: self.max_alloc,
+                },
+            )?;
+        }
+        if self.entry_ip == 0xFFFF {
+            enforce(self.strictness, Error::EntryIpAtLastByteOfSegment)?;
+        }
+        if self.entry_cs == 0xFFFF {
+            enforce(self.strictness, Error::EntryCsAtTopOfMemory)?;
         }
         Ok(MzSpec {
             min_alloc: self.min_alloc,
@@ -78,6 +105,17 @@ impl MzSpecBuilder {
             entry_ip: self.entry_ip,
             entry_cs: self.entry_cs,
         })
+    }
+}
+
+fn enforce(strictness: Strictness, error: Error) -> Result<(), Error> {
+    match strictness {
+        Strictness::Error => Err(error),
+        Strictness::Warn => {
+            eprintln!("{error}");
+            Ok(())
+        }
+        Strictness::Allow => Ok(()),
     }
 }
 
@@ -110,12 +148,39 @@ pub fn convert(_elf: &[u8], spec: &MzSpec) -> Result<Vec<u8>, Error> {
 
 #[derive(Debug)]
 pub enum Error {
-    MaxAllocLessThanMinAlloc,
+    MaxAllocLessThanMinAlloc { min_alloc: u16, max_alloc: u16 },
+    EntryIpAtLastByteOfSegment,
+    EntryCsAtTopOfMemory,
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MaxAllocLessThanMinAlloc {
+                min_alloc,
+                max_alloc,
+            } => write!(
+                f,
+                "min_alloc (0x{min_alloc:04X}) must not exceed max_alloc (0x{max_alloc:04X}); \
+                 DOS cannot load the program if the minimum allocation cannot be met"
+            ),
+            Self::EntryIpAtLastByteOfSegment => write!(
+                f,
+                "entry_ip 0xFFFF is the last byte of a 64 KiB segment; the first fetch wraps to \
+                 the segment start, so valid code cannot begin there"
+            ),
+            Self::EntryCsAtTopOfMemory => write!(
+                f,
+                "entry_cs 0xFFFF aims the code segment at the top of the 1 MiB map (0xFFFF0); the \
+                 loader would relocate it into unmapped memory"
+            ),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{convert, Error, MzSpec};
+    use crate::{convert, Error, MzSpec, Strictness};
 
     #[test]
     fn convert_produces_mz_magic() {
@@ -175,6 +240,7 @@ mod tests {
         ];
         for (entry_ip, expected, desc) in cases {
             let spec = MzSpec::builder()
+                .strictness(Strictness::Allow)
                 .entry_ip(entry_ip)
                 .build()
                 .expect("builder should succeed");
@@ -196,6 +262,7 @@ mod tests {
         ];
         for (entry_cs, expected, desc) in cases {
             let spec = MzSpec::builder()
+                .strictness(Strictness::Allow)
                 .entry_cs(entry_cs)
                 .build()
                 .expect("builder should succeed");
@@ -222,7 +289,7 @@ mod tests {
         let cases = [
             (0x0000, 0x0000, 0x0000, 0x0000, "minimum boundary"),
             (0x0040, 0x0100, 0x0010, 0x0020, "typical values"),
-            (0xffff, 0xffff, 0xffff, 0xffff, "maximum boundary"),
+            (0xffff, 0xffff, 0xfffe, 0xfffe, "maximum valid boundary"),
         ];
         for (min_alloc, max_alloc, entry_ip, entry_cs, desc) in cases {
             let spec = MzSpec::builder()
@@ -245,6 +312,36 @@ mod tests {
             .min_alloc(0x0100)
             .max_alloc(0x00ff)
             .build();
-        assert!(matches!(result, Err(Error::MaxAllocLessThanMinAlloc)));
+        assert!(matches!(
+            result,
+            Err(Error::MaxAllocLessThanMinAlloc {
+                min_alloc: 0x0100,
+                max_alloc: 0x00ff,
+            })
+        ));
+    }
+
+    #[test]
+    fn builder_rejects_entry_ip_at_last_byte_of_segment() {
+        let result = MzSpec::builder().entry_ip(0xffff).build();
+        assert!(matches!(result, Err(Error::EntryIpAtLastByteOfSegment)));
+    }
+
+    #[test]
+    fn builder_rejects_entry_cs_at_top_of_memory() {
+        let result = MzSpec::builder().entry_cs(0xffff).build();
+        assert!(matches!(result, Err(Error::EntryCsAtTopOfMemory)));
+    }
+
+    #[test]
+    fn builder_strictness_allow_skips_validation() {
+        let result = MzSpec::builder()
+            .strictness(Strictness::Allow)
+            .min_alloc(0x0100)
+            .max_alloc(0x00ff)
+            .entry_ip(0xffff)
+            .entry_cs(0xffff)
+            .build();
+        assert!(result.is_ok());
     }
 }
