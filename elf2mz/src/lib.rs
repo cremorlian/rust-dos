@@ -151,7 +151,7 @@ fn enforce(strictness: Strictness, error: Error) -> Result<(), Error> {
 pub fn convert(_elf: &[u8], spec: &MzSpec) -> Result<Vec<u8>, Error> {
     const WORD_WIDTH: usize = 2;
 
-    let mut out = vec![0u8; 24];
+    let mut out = vec![0u8; 28];
 
     const OFFSET_MAGIC: usize = 0;
     const MZ_MAGIC: &[u8; 2] = b"MZ";
@@ -172,6 +172,18 @@ pub fn convert(_elf: &[u8], spec: &MzSpec) -> Result<Vec<u8>, Error> {
     const OFFSET_STACK_SP: usize = 16;
     out[OFFSET_STACK_SP..OFFSET_STACK_SP + WORD_WIDTH]
         .copy_from_slice(&spec.stack_sp().to_le_bytes());
+
+    const OFFSET_CRLC: usize = 6;
+    out[OFFSET_CRLC..OFFSET_CRLC + WORD_WIDTH].copy_from_slice(&0u16.to_le_bytes());
+
+    const OFFSET_CSUM: usize = 18;
+    out[OFFSET_CSUM..OFFSET_CSUM + WORD_WIDTH].copy_from_slice(&0u16.to_le_bytes());
+
+    const OFFSET_LFARLC: usize = 24;
+    out[OFFSET_LFARLC..OFFSET_LFARLC + WORD_WIDTH].copy_from_slice(&0u16.to_le_bytes());
+
+    const OFFSET_OVNO: usize = 26;
+    out[OFFSET_OVNO..OFFSET_OVNO + WORD_WIDTH].copy_from_slice(&0u16.to_le_bytes());
 
     const OFFSET_ENTRY_IP: usize = 20;
     out[OFFSET_ENTRY_IP..OFFSET_ENTRY_IP + WORD_WIDTH]
@@ -359,6 +371,38 @@ mod tests {
                 "expected stack_sp to be {expected} for {desc}"
             );
         }
+    }
+
+    #[test]
+    fn convert_writes_crlc_as_zero() {
+        let spec = MzSpec::builder().build().expect("builder should succeed");
+        let mz = convert(&[0x90], &spec).expect("convert should succeed");
+        let written = u16::from_le_bytes([mz[6], mz[7]]);
+        assert_eq!(written, 0, "e_crlc must be zero (no relocations)");
+    }
+
+    #[test]
+    fn convert_writes_csum_as_zero() {
+        let spec = MzSpec::builder().build().expect("builder should succeed");
+        let mz = convert(&[0x90], &spec).expect("convert should succeed");
+        let written = u16::from_le_bytes([mz[18], mz[19]]);
+        assert_eq!(written, 0, "e_csum must be zero (no checksum)");
+    }
+
+    #[test]
+    fn convert_writes_lfarlc_as_zero() {
+        let spec = MzSpec::builder().build().expect("builder should succeed");
+        let mz = convert(&[0x90], &spec).expect("convert should succeed");
+        let written = u16::from_le_bytes([mz[24], mz[25]]);
+        assert_eq!(written, 0, "e_lfarlc must be zero (no relocs)");
+    }
+
+    #[test]
+    fn convert_writes_ovno_as_zero() {
+        let spec = MzSpec::builder().build().expect("builder should succeed");
+        let mz = convert(&[0x90], &spec).expect("convert should succeed");
+        let written = u16::from_le_bytes([mz[26], mz[27]]);
+        assert_eq!(written, 0, "e_ovno must be zero (no overlay)");
     }
 
     #[test]
