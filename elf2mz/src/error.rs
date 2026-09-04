@@ -10,6 +10,7 @@ pub enum Error {
     UnsupportedElfClass,
     UnsupportedElfEndian,
     Truncated,
+    NoLoadableSegments,
 }
 
 impl std::fmt::Display for Error {
@@ -53,6 +54,10 @@ impl std::fmt::Display for Error {
             Self::Truncated => write!(
                 f,
                 "ELF file is truncated: fewer bytes than required to hold the header and/or program headers"
+            ),
+            Self::NoLoadableSegments => write!(
+                f,
+                "ELF has no loadable program segments; there is no program image to load"
             ),
         }
     }
