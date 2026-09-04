@@ -2,6 +2,8 @@
 
 pub mod error;
 
+mod elf;
+
 pub use crate::error::Error;
 
 #[derive(Debug, Copy, Clone, Default)]

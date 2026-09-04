@@ -6,6 +6,10 @@ pub enum Error {
     EntryIpAtLastByteOfSegment,
     EntryCsAtTopOfMemory,
     StackSsAtTopOfMemory,
+    NotAnElfFile,
+    UnsupportedElfClass,
+    UnsupportedElfEndian,
+    Truncated,
 }
 
 impl std::fmt::Display for Error {
@@ -33,6 +37,22 @@ impl std::fmt::Display for Error {
                 f,
                 "stack_ss 0xFFFF aims the stack segment at the top of the 1 MiB map (0xFFFF0); \
                  the loader would relocate it into unmapped memory"
+            ),
+            Self::NotAnElfFile => write!(
+                f,
+                "input does not begin with the ELF magic (\\x7FELF); expected an ELF32 executable"
+            ),
+            Self::UnsupportedElfClass => write!(
+                f,
+                "ELF class is ELF64; only ELF32 (ELFCLASS32) executables are supported"
+            ),
+            Self::UnsupportedElfEndian => write!(
+                f,
+                "ELF data encoding is big-endian; only little-endian (ELFDATA2LSB) is supported"
+            ),
+            Self::Truncated => write!(
+                f,
+                "ELF file is truncated: fewer bytes than required to hold the header and/or program headers"
             ),
         }
     }
