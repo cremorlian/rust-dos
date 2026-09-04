@@ -11,6 +11,8 @@ pub enum Error {
     UnsupportedElfEndian,
     Truncated,
     NoLoadableSegments,
+    InvalidSegmentSize,
+    InvalidSegmentRange,
 }
 
 impl std::fmt::Display for Error {
@@ -58,6 +60,14 @@ impl std::fmt::Display for Error {
             Self::NoLoadableSegments => write!(
                 f,
                 "ELF has no loadable program segments; there is no program image to load"
+            ),
+            Self::InvalidSegmentSize => write!(
+                f,
+                "program segment is malformed: file size (p_filesz) exceeds its memory size (p_memsz)"
+            ),
+            Self::InvalidSegmentRange => write!(
+                f,
+                "program segment address range (p_vaddr + p_memsz) overflows the 32-bit address space"
             ),
         }
     }

@@ -38,10 +38,12 @@ pub(crate) fn parse(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     let phentsize = read_u16(E_PHENTSIZE) as usize;
     let phnum = read_u16(E_PHNUM) as usize;
 
+    const P_TYPE: usize = 0;
     const P_VADDR: usize = 8;
     const P_OFFSET: usize = 4;
     const P_FILESZ: usize = 16;
     const P_MEMSZ: usize = 20;
+    const PT_LOAD: u32 = 1;
 
     let mut segments = Vec::new();
     for i in 0..phnum {
@@ -49,12 +51,26 @@ pub(crate) fn parse(bytes: &[u8]) -> Result<Vec<u8>, Error> {
         if ph + phentsize > bytes.len() {
             return Err(Error::Truncated);
         }
-        segments.push((
-            read_u32(ph + P_VADDR),
-            read_u32(ph + P_OFFSET),
-            read_u32(ph + P_FILESZ),
-            read_u32(ph + P_MEMSZ),
-        ));
+        if read_u32(ph + P_TYPE) != PT_LOAD {
+            continue;
+        }
+        let vaddr = read_u32(ph + P_VADDR);
+        let offset = read_u32(ph + P_OFFSET);
+        let filesz = read_u32(ph + P_FILESZ);
+        let memsz = read_u32(ph + P_MEMSZ);
+        if filesz > memsz {
+            return Err(Error::InvalidSegmentSize);
+        }
+        if offset
+            .checked_add(filesz)
+            .is_none_or(|end| end as usize > bytes.len())
+        {
+            return Err(Error::Truncated);
+        }
+        if vaddr.checked_add(memsz).is_none() {
+            return Err(Error::InvalidSegmentRange);
+        }
+        segments.push((vaddr, offset, filesz, memsz));
     }
 
     if segments.is_empty() {
@@ -62,8 +78,8 @@ pub(crate) fn parse(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     }
 
     let min_vaddr = segments.iter().map(|s| s.0).min().unwrap();
-    let image_end = segments.iter().map(|s| s.0 + s.3).max().unwrap();
-    let mut image = vec![0u8; (image_end - min_vaddr) as usize];
+    let max_end = segments.iter().map(|s| s.0 + s.3).max().unwrap();
+    let mut image = vec![0u8; (max_end - min_vaddr) as usize];
     for (vaddr, offset, filesz, _memsz) in &segments {
         let start = (*vaddr - min_vaddr) as usize;
         image[start..start + *filesz as usize]
@@ -211,5 +227,49 @@ mod tests {
     fn parse_rejects_no_loadable_segments() {
         let elf = build_elf(&[]);
         assert!(matches!(parse(&elf), Err(Error::NoLoadableSegments)));
+    }
+
+    #[test]
+    fn parse_rejects_segment_data_beyond_file() {
+        let mut elf = build_elf(&[Segment {
+            vaddr: 0x1000,
+            data: vec![1, 2, 3, 4],
+            memsz: 0x100,
+        }]);
+        let filesz: u32 = 0x100;
+        elf[52 + 16..52 + 20].copy_from_slice(&filesz.to_le_bytes());
+        assert!(matches!(parse(&elf), Err(Error::Truncated)));
+    }
+
+    #[test]
+    fn parse_rejects_filesz_larger_than_memsz() {
+        let elf = build_elf(&[Segment {
+            vaddr: 0x1000,
+            data: vec![1, 2, 3, 4],
+            memsz: 2,
+        }]);
+        assert!(matches!(parse(&elf), Err(Error::InvalidSegmentSize)));
+    }
+
+    #[test]
+    fn parse_rejects_no_load_segments_when_only_non_load_phdrs() {
+        let mut elf = build_elf(&[Segment {
+            vaddr: 0x1000,
+            data: vec![1, 2, 3, 4],
+            memsz: 4,
+        }]);
+        const PT_PHDR: u32 = 6;
+        elf[52..56].copy_from_slice(&PT_PHDR.to_le_bytes());
+        assert!(matches!(parse(&elf), Err(Error::NoLoadableSegments)));
+    }
+
+    #[test]
+    fn parse_rejects_segment_range_overflow() {
+        let elf = build_elf(&[Segment {
+            vaddr: 0xFFFF_FFF0,
+            data: vec![1, 2, 3, 4],
+            memsz: 0x20,
+        }]);
+        assert!(matches!(parse(&elf), Err(Error::InvalidSegmentRange)));
     }
 }
