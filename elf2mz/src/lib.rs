@@ -74,7 +74,7 @@ impl Converter {
     }
 
     pub fn convert(&self, elf: &[u8]) -> Result<Vec<u8>, Error> {
-        let image = elf::parse(elf)?;
+        let image = elf::extract_image(elf)?;
         let mut out = mz_header::build_headers(
             &mz_header::HeaderSpecs {
                 min_alloc: self.min_alloc,

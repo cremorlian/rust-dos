@@ -1,6 +1,6 @@
 use crate::Error;
 
-pub(crate) fn parse(bytes: &[u8]) -> Result<Vec<u8>, Error> {
+pub(crate) fn extract_image(bytes: &[u8]) -> Result<Vec<u8>, Error> {
     const ELF_MAGIC: &[u8; 4] = b"\x7fELF";
     if !bytes.starts_with(ELF_MAGIC) {
         return Err(Error::NotAnElfFile);
@@ -95,35 +95,41 @@ mod tests {
     use crate::Error;
 
     #[test]
-    fn parse_rejects_non_elf() {
+    fn extract_image_rejects_non_elf() {
         let bytes = b"this is not an ELF file at all";
-        assert!(matches!(parse(bytes), Err(Error::NotAnElfFile)));
+        assert!(matches!(extract_image(bytes), Err(Error::NotAnElfFile)));
     }
 
     #[test]
-    fn parse_rejects_elf64_class() {
+    fn extract_image_rejects_elf64_class() {
         let mut bytes = vec![0u8; 64];
         bytes[0..4].copy_from_slice(b"\x7fELF");
         bytes[4] = 2;
-        assert!(matches!(parse(&bytes), Err(Error::UnsupportedElfClass)));
+        assert!(matches!(
+            extract_image(&bytes),
+            Err(Error::UnsupportedElfClass)
+        ));
     }
 
     #[test]
-    fn parse_rejects_big_endian() {
+    fn extract_image_rejects_big_endian() {
         let mut bytes = vec![0u8; 64];
         bytes[0..4].copy_from_slice(b"\x7fELF");
         bytes[4] = 1;
         bytes[5] = 2;
-        assert!(matches!(parse(&bytes), Err(Error::UnsupportedElfEndian)));
+        assert!(matches!(
+            extract_image(&bytes),
+            Err(Error::UnsupportedElfEndian)
+        ));
     }
 
     #[test]
-    fn parse_rejects_truncated_header() {
+    fn extract_image_rejects_truncated_header() {
         let mut bytes = vec![0u8; 16];
         bytes[0..4].copy_from_slice(b"\x7fELF");
         bytes[4] = 1;
         bytes[5] = 1;
-        assert!(matches!(parse(&bytes), Err(Error::Truncated)));
+        assert!(matches!(extract_image(&bytes), Err(Error::Truncated)));
     }
 
     struct Segment {
@@ -161,18 +167,18 @@ mod tests {
     }
 
     #[test]
-    fn parse_extracts_single_load_segment() {
+    fn extract_image_extracts_single_load_segment() {
         let elf = build_elf(&[Segment {
             vaddr: 0x1000,
             data: vec![1, 2, 3, 4],
             memsz: 4,
         }]);
-        let image = parse(&elf).expect("parse should succeed");
+        let image = extract_image(&elf).expect("parse should succeed");
         assert_eq!(image, &[1, 2, 3, 4]);
     }
 
     #[test]
-    fn parse_spans_and_rebases_multiple_segments() {
+    fn extract_image_spans_and_rebases_multiple_segments() {
         let elf = build_elf(&[
             Segment {
                 vaddr: 0x3000,
@@ -185,7 +191,7 @@ mod tests {
                 memsz: 4,
             },
         ]);
-        let image = parse(&elf).expect("parse should succeed");
+        let image = extract_image(&elf).expect("parse should succeed");
         assert_eq!(&image[0..4], &[1, 2, 3, 4], "lowest-vaddr data leads image");
         assert_eq!(
             &image[0x2000..0x2002],
@@ -201,18 +207,18 @@ mod tests {
     }
 
     #[test]
-    fn parse_zero_fills_bss_tail() {
+    fn extract_image_zero_fills_bss_tail() {
         let elf = build_elf(&[Segment {
             vaddr: 0x1000,
             data: vec![1, 2],
             memsz: 4,
         }]);
-        let image = parse(&elf).expect("parse should succeed");
+        let image = extract_image(&elf).expect("parse should succeed");
         assert_eq!(image, &[1, 2, 0, 0], "memsz > filesz zero-fills the tail");
     }
 
     #[test]
-    fn parse_rejects_truncated_phdr_table() {
+    fn extract_image_rejects_truncated_phdr_table() {
         let mut bytes = vec![0u8; 60];
         bytes[0..4].copy_from_slice(b"\x7fELF");
         bytes[4] = 1;
@@ -220,17 +226,20 @@ mod tests {
         bytes[28..32].copy_from_slice(&52u32.to_le_bytes());
         bytes[42..44].copy_from_slice(&32u16.to_le_bytes());
         bytes[44..46].copy_from_slice(&1u16.to_le_bytes());
-        assert!(matches!(parse(&bytes), Err(Error::Truncated)));
+        assert!(matches!(extract_image(&bytes), Err(Error::Truncated)));
     }
 
     #[test]
-    fn parse_rejects_no_loadable_segments() {
+    fn extract_image_rejects_no_loadable_segments() {
         let elf = build_elf(&[]);
-        assert!(matches!(parse(&elf), Err(Error::NoLoadableSegments)));
+        assert!(matches!(
+            extract_image(&elf),
+            Err(Error::NoLoadableSegments)
+        ));
     }
 
     #[test]
-    fn parse_rejects_segment_data_beyond_file() {
+    fn extract_image_rejects_segment_data_beyond_file() {
         let mut elf = build_elf(&[Segment {
             vaddr: 0x1000,
             data: vec![1, 2, 3, 4],
@@ -238,21 +247,24 @@ mod tests {
         }]);
         let filesz: u32 = 0x100;
         elf[52 + 16..52 + 20].copy_from_slice(&filesz.to_le_bytes());
-        assert!(matches!(parse(&elf), Err(Error::Truncated)));
+        assert!(matches!(extract_image(&elf), Err(Error::Truncated)));
     }
 
     #[test]
-    fn parse_rejects_filesz_larger_than_memsz() {
+    fn extract_image_rejects_filesz_larger_than_memsz() {
         let elf = build_elf(&[Segment {
             vaddr: 0x1000,
             data: vec![1, 2, 3, 4],
             memsz: 2,
         }]);
-        assert!(matches!(parse(&elf), Err(Error::InvalidSegmentSize)));
+        assert!(matches!(
+            extract_image(&elf),
+            Err(Error::InvalidSegmentSize)
+        ));
     }
 
     #[test]
-    fn parse_rejects_no_load_segments_when_only_non_load_phdrs() {
+    fn extract_image_rejects_no_load_segments_when_only_non_load_phdrs() {
         let mut elf = build_elf(&[Segment {
             vaddr: 0x1000,
             data: vec![1, 2, 3, 4],
@@ -260,16 +272,22 @@ mod tests {
         }]);
         const PT_PHDR: u32 = 6;
         elf[52..56].copy_from_slice(&PT_PHDR.to_le_bytes());
-        assert!(matches!(parse(&elf), Err(Error::NoLoadableSegments)));
+        assert!(matches!(
+            extract_image(&elf),
+            Err(Error::NoLoadableSegments)
+        ));
     }
 
     #[test]
-    fn parse_rejects_segment_range_overflow() {
+    fn extract_image_rejects_segment_range_overflow() {
         let elf = build_elf(&[Segment {
             vaddr: 0xFFFF_FFF0,
             data: vec![1, 2, 3, 4],
             memsz: 0x20,
         }]);
-        assert!(matches!(parse(&elf), Err(Error::InvalidSegmentRange)));
+        assert!(matches!(
+            extract_image(&elf),
+            Err(Error::InvalidSegmentRange)
+        ));
     }
 }
