@@ -73,8 +73,9 @@ impl Converter {
         self
     }
 
-    pub fn convert(&self, _elf: &[u8]) -> Result<Vec<u8>, Error> {
-        let header = mz_header::build_headers(
+    pub fn convert(&self, elf: &[u8]) -> Result<Vec<u8>, Error> {
+        let image = elf::parse(elf)?;
+        let mut out = mz_header::build_headers(
             &mz_header::HeaderSpecs {
                 min_alloc: self.min_alloc,
                 max_alloc: self.max_alloc,
@@ -83,9 +84,11 @@ impl Converter {
                 entry_ip: self.entry_ip,
                 entry_cs: self.entry_cs,
             },
-            0,
+            image.len(),
             self.strictness,
-        )?;
-        Ok(header.to_vec())
+        )?
+        .to_vec();
+        out.extend_from_slice(&image);
+        Ok(out)
     }
 }
