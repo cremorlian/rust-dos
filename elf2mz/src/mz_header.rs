@@ -61,8 +61,17 @@ pub(crate) fn build_headers(
     const NO_OVERLAY: u16 = 0;
 
     let total_len = HEADER_SIZE + image_len;
-    let last_page_bytes = (total_len % PAGE) as u16;
-    let page_count = total_len.div_ceil(PAGE) as u16;
+    let last_page_bytes = match total_len % PAGE {
+        0 => PAGE as u16,
+        n => n as u16,
+    };
+    let page_count_full = total_len.div_ceil(PAGE);
+    if page_count_full > u16::MAX as usize {
+        return Err(Error::OutputTooLarge {
+            pages: page_count_full as u32,
+        });
+    }
+    let page_count = page_count_full as u16;
 
     let mut out = [0u8; HEADER_SIZE];
 
@@ -294,6 +303,48 @@ mod tests {
         let out = build_headers(&base_specs(), 0, Strictness::Error).expect("build succeeds");
         let written = u16::from_le_bytes([out[26], out[27]]);
         assert_eq!(written, 0, "e_ovno must be zero (no overlay)");
+    }
+
+    #[test]
+    fn build_headers_writes_cblp_as_full_page_on_exact_multiple() {
+        const FULL_PAGE: u16 = 0x0200;
+        let out = build_headers(&base_specs(), 480, Strictness::Error).expect("build succeeds");
+        let written = u16::from_le_bytes([out[2], out[3]]);
+        assert_eq!(
+            written, FULL_PAGE,
+            "a 512-byte output must report e_cblp = 512"
+        );
+    }
+
+    #[test]
+    fn build_headers_rejects_output_larger_than_u16_pages() {
+        const MAX_PAGES: usize = 65535;
+        const PAGE: usize = 512;
+        const HEADER_SIZE: usize = 32;
+        const OVERFLOW_PAGES: u32 = 65536;
+        let over_image_len = MAX_PAGES * PAGE - HEADER_SIZE + 1;
+        assert!(matches!(
+            build_headers(&base_specs(), over_image_len, Strictness::Error),
+            Err(Error::OutputTooLarge {
+                pages: OVERFLOW_PAGES
+            })
+        ));
+    }
+
+    #[test]
+    fn build_headers_writes_cp_at_max_u16_pages() {
+        const MAX_PAGES: usize = 65535;
+        const PAGE: usize = 512;
+        const HEADER_SIZE: usize = 32;
+        const MAX_PAGE_COUNT: u16 = 65535;
+        let max_image_len = MAX_PAGES * PAGE - HEADER_SIZE;
+        let out =
+            build_headers(&base_specs(), max_image_len, Strictness::Error).expect("build succeeds");
+        assert_eq!(
+            u16::from_le_bytes([out[4], out[5]]),
+            MAX_PAGE_COUNT,
+            "e_cp must still hold 65535 pages at the representable boundary"
+        );
     }
 
     #[test]

@@ -30,6 +30,14 @@ pub(crate) fn extract_image(bytes: &[u8]) -> Result<Vec<u8>, Error> {
         u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap())
     };
 
+    const ET_EXEC: u16 = 2;
+    const E_TYPE: usize = 16;
+    if read_u16(E_TYPE) != ET_EXEC {
+        return Err(Error::UnsupportedElfType {
+            e_type: read_u16(E_TYPE),
+        });
+    }
+
     const E_PHOFF: usize = 28;
     const E_PHENTSIZE: usize = 42;
     const E_PHNUM: usize = 44;
@@ -132,6 +140,27 @@ mod tests {
         assert!(matches!(extract_image(&bytes), Err(Error::Truncated)));
     }
 
+    #[test]
+    fn extract_image_rejects_non_executable_type() {
+        const ET_DYN: u16 = 3;
+        const ET_REL: u16 = 1;
+        for e_type in [ET_DYN, ET_REL] {
+            let mut elf = build_elf(&[Segment {
+                vaddr: 0x1000,
+                data: vec![1, 2, 3, 4],
+                memsz: 4,
+            }]);
+            elf[16..18].copy_from_slice(&e_type.to_le_bytes());
+            assert!(
+                matches!(
+                    extract_image(&elf),
+                    Err(Error::UnsupportedElfType { e_type: got }) if got == e_type
+                ),
+                "expected UnsupportedElfType for e_type {e_type}"
+            );
+        }
+    }
+
     struct Segment {
         vaddr: u32,
         data: Vec<u8>,
@@ -142,11 +171,14 @@ mod tests {
         const HEADER_SIZE: usize = 52;
         const PHENT_SIZE: usize = 32;
         const PT_LOAD: u32 = 1;
+        const E_TYPE: usize = 16;
+        const ET_EXEC: u16 = 2;
 
         let mut out = vec![0u8; HEADER_SIZE + segments.len() * PHENT_SIZE];
         out[0..4].copy_from_slice(b"\x7fELF");
         out[4] = 1;
         out[5] = 1;
+        out[E_TYPE..E_TYPE + 2].copy_from_slice(&ET_EXEC.to_le_bytes());
         out[28..32].copy_from_slice(&(HEADER_SIZE as u32).to_le_bytes());
         out[42..44].copy_from_slice(&(PHENT_SIZE as u16).to_le_bytes());
         out[44..46].copy_from_slice(&(segments.len() as u16).to_le_bytes());
@@ -223,6 +255,7 @@ mod tests {
         bytes[0..4].copy_from_slice(b"\x7fELF");
         bytes[4] = 1;
         bytes[5] = 1;
+        bytes[16..18].copy_from_slice(&2u16.to_le_bytes());
         bytes[28..32].copy_from_slice(&52u32.to_le_bytes());
         bytes[42..44].copy_from_slice(&32u16.to_le_bytes());
         bytes[44..46].copy_from_slice(&1u16.to_le_bytes());

@@ -9,10 +9,12 @@ pub enum Error {
     NotAnElfFile,
     UnsupportedElfClass,
     UnsupportedElfEndian,
+    UnsupportedElfType { e_type: u16 },
     Truncated,
     NoLoadableSegments,
     InvalidSegmentSize,
     InvalidSegmentRange,
+    OutputTooLarge { pages: u32 },
 }
 
 impl std::fmt::Display for Error {
@@ -52,6 +54,16 @@ impl std::fmt::Display for Error {
             Self::UnsupportedElfEndian => write!(
                 f,
                 "ELF data encoding is big-endian; only little-endian (ELFDATA2LSB) is supported"
+            ),
+            Self::UnsupportedElfType { e_type } => write!(
+                f,
+                "ELF type is {e_type}; only static executables (ET_EXEC, value 2) are supported. \
+                 PIE (ET_DYN) and relocatable (ET_REL) inputs require dynamic linking"
+            ),
+            Self::OutputTooLarge { pages } => write!(
+                f,
+                "output is too large: it spans {pages} pages, but the MZ page count (e_cp) is a u16 \
+                 and can represent at most 65535 pages"
             ),
             Self::Truncated => write!(
                 f,
