@@ -7,3 +7,6 @@ repository.workspace = true
 description = "Convert a static ELF32 executable into an MZ (DOS) executable"
 
 [dependencies]
+
+[lints]
+workspace = true

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["elf2mz"]
+members = ["dos-pm", "elf2mz"]
 
 [workspace.package]
 edition = "2024"
@@ -8,4 +8,4 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/cremorlian/rust-dos"
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
+unsafe_code = "deny"
