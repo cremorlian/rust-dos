@@ -24,14 +24,18 @@ pub(crate) fn build_headers(
             },
         )?;
     }
-    if specs.entry_ip == 0xFFFF {
-        enforce(strictness, Error::EntryIpAtLastByteOfSegment)?;
-    }
-    if specs.entry_cs == 0xFFFF {
-        enforce(strictness, Error::EntryCsAtTopOfMemory)?;
+    if specs.entry_cs as u32 * 16 + specs.entry_ip as u32 >= image_len as u32 {
+        enforce(
+            strictness,
+            Error::EntryOutsideImage {
+                entry_cs: specs.entry_cs,
+                entry_ip: specs.entry_ip,
+                image_len,
+            },
+        )?;
     }
     if specs.stack_ss == 0xFFFF {
-        enforce(strictness, Error::StackSsAtTopOfMemory)?;
+        enforce(strictness, Error::StackSsWrapsDuringRelocation)?;
     }
 
     const WORD_WIDTH: usize = 2;
@@ -104,6 +108,8 @@ mod tests {
     use super::*;
     use crate::Error;
 
+    const TEST_IMAGE_LEN: usize = 0x1000;
+
     fn base_specs() -> HeaderSpecs {
         HeaderSpecs {
             min_alloc: 0,
@@ -129,16 +135,16 @@ mod tests {
             entry_cs: specs.entry_cs,
         };
         f(&mut s);
-        build_headers(&s, 0, strictness).expect("build should succeed")
+        build_headers(&s, TEST_IMAGE_LEN, strictness).expect("build should succeed")
     }
 
     fn try_build(specs: &HeaderSpecs, strictness: Strictness) -> Result<[u8; 32], Error> {
-        build_headers(specs, 0, strictness)
+        build_headers(specs, TEST_IMAGE_LEN, strictness)
     }
 
     #[test]
     fn build_headers_produces_mz_magic() {
-        let out = build_headers(&base_specs(), 0, Strictness::Error).expect("build succeeds");
+        let out = build_headers(&base_specs(), TEST_IMAGE_LEN, Strictness::Error).expect("build succeeds");
         assert_eq!(&out[0..2], b"MZ");
     }
 
@@ -262,28 +268,28 @@ mod tests {
 
     #[test]
     fn build_headers_writes_crlc_as_zero() {
-        let out = build_headers(&base_specs(), 0, Strictness::Error).expect("build succeeds");
+        let out = build_headers(&base_specs(), TEST_IMAGE_LEN, Strictness::Error).expect("build succeeds");
         let written = u16::from_le_bytes([out[6], out[7]]);
         assert_eq!(written, 0, "e_crlc must be zero (no relocations)");
     }
 
     #[test]
     fn build_headers_writes_csum_as_zero() {
-        let out = build_headers(&base_specs(), 0, Strictness::Error).expect("build succeeds");
+        let out = build_headers(&base_specs(), TEST_IMAGE_LEN, Strictness::Error).expect("build succeeds");
         let written = u16::from_le_bytes([out[18], out[19]]);
         assert_eq!(written, 0, "e_csum must be zero (no checksum)");
     }
 
     #[test]
     fn build_headers_writes_cparhdr_as_two() {
-        let out = build_headers(&base_specs(), 0, Strictness::Error).expect("build succeeds");
+        let out = build_headers(&base_specs(), TEST_IMAGE_LEN, Strictness::Error).expect("build succeeds");
         let written = u16::from_le_bytes([out[8], out[9]]);
         assert_eq!(written, 2, "e_cparhdr must be 2 (32-byte padded header)");
     }
 
     #[test]
     fn build_headers_pads_to_paragraph_boundary() {
-        let out = build_headers(&base_specs(), 0, Strictness::Error).expect("build succeeds");
+        let out = build_headers(&base_specs(), TEST_IMAGE_LEN, Strictness::Error).expect("build succeeds");
         assert_eq!(
             out.len(),
             32,
@@ -293,14 +299,14 @@ mod tests {
 
     #[test]
     fn build_headers_writes_lfarlc_as_zero() {
-        let out = build_headers(&base_specs(), 0, Strictness::Error).expect("build succeeds");
+        let out = build_headers(&base_specs(), TEST_IMAGE_LEN, Strictness::Error).expect("build succeeds");
         let written = u16::from_le_bytes([out[24], out[25]]);
         assert_eq!(written, 0, "e_lfarlc must be zero (no relocs)");
     }
 
     #[test]
     fn build_headers_writes_ovno_as_zero() {
-        let out = build_headers(&base_specs(), 0, Strictness::Error).expect("build succeeds");
+        let out = build_headers(&base_specs(), TEST_IMAGE_LEN, Strictness::Error).expect("build succeeds");
         let written = u16::from_le_bytes([out[26], out[27]]);
         assert_eq!(written, 0, "e_ovno must be zero (no overlay)");
     }
@@ -349,7 +355,7 @@ mod tests {
 
     #[test]
     fn build_headers_uses_correct_default_values() {
-        let out = build_headers(&base_specs(), 0, Strictness::Error).expect("build succeeds");
+        let out = build_headers(&base_specs(), TEST_IMAGE_LEN, Strictness::Error).expect("build succeeds");
         assert_eq!(u16::from_le_bytes([out[10], out[11]]), 0, "min_alloc");
         assert_eq!(u16::from_le_bytes([out[12], out[13]]), 0xFFFF, "max_alloc");
         assert_eq!(u16::from_le_bytes([out[20], out[21]]), 0, "entry_ip");
@@ -450,33 +456,73 @@ mod tests {
     }
 
     #[test]
-    fn build_headers_rejects_entry_ip_at_last_byte_of_segment() {
+    fn build_headers_rejects_entry_outside_image() {
         let specs = HeaderSpecs {
-            entry_ip: 0xffff,
+            entry_cs: 0x0100,
+            entry_ip: 0x0001,
             ..base_specs()
         };
         let result = try_build(&specs, Strictness::Error);
-        assert!(matches!(result, Err(Error::EntryIpAtLastByteOfSegment)));
+        assert!(matches!(
+            result,
+            Err(Error::EntryOutsideImage {
+                entry_cs: 0x0100,
+                entry_ip: 0x0001,
+                image_len: TEST_IMAGE_LEN,
+            })
+        ));
     }
 
     #[test]
-    fn build_headers_rejects_entry_cs_at_top_of_memory() {
+    fn build_headers_rejects_entry_at_image_end() {
         let specs = HeaderSpecs {
-            entry_cs: 0xffff,
+            entry_cs: 0x0100,
+            entry_ip: 0x0000,
             ..base_specs()
         };
         let result = try_build(&specs, Strictness::Error);
-        assert!(matches!(result, Err(Error::EntryCsAtTopOfMemory)));
+        assert!(matches!(result, Err(Error::EntryOutsideImage { .. })));
     }
 
     #[test]
-    fn build_headers_rejects_stack_ss_at_top_of_memory() {
+    fn build_headers_rejects_entry_ip_0x_ffff_as_outside_image() {
+        let specs = HeaderSpecs {
+            entry_ip: 0xFFFF,
+            ..base_specs()
+        };
+        let result = try_build(&specs, Strictness::Error);
+        assert!(matches!(result, Err(Error::EntryOutsideImage { .. })));
+    }
+
+    #[test]
+    fn build_headers_rejects_entry_cs_0x_ffff_as_outside_image() {
+        let specs = HeaderSpecs {
+            entry_cs: 0xFFFF,
+            ..base_specs()
+        };
+        let result = try_build(&specs, Strictness::Error);
+        assert!(matches!(result, Err(Error::EntryOutsideImage { .. })));
+    }
+
+    #[test]
+    fn build_headers_accepts_entry_at_last_valid_offset() {
+        let specs = HeaderSpecs {
+            entry_cs: 0x00FF,
+            entry_ip: 0x000F,
+            ..base_specs()
+        };
+        let result = try_build(&specs, Strictness::Error);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn build_headers_rejects_stack_ss_wraps_during_relocation() {
         let specs = HeaderSpecs {
             stack_ss: 0xffff,
             ..base_specs()
         };
         let result = try_build(&specs, Strictness::Error);
-        assert!(matches!(result, Err(Error::StackSsAtTopOfMemory)));
+        assert!(matches!(result, Err(Error::StackSsWrapsDuringRelocation)));
     }
 
     #[test]

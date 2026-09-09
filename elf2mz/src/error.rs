@@ -3,9 +3,12 @@
 #[derive(Debug)]
 pub enum Error {
     MaxAllocLessThanMinAlloc { min_alloc: u16, max_alloc: u16 },
-    EntryIpAtLastByteOfSegment,
-    EntryCsAtTopOfMemory,
-    StackSsAtTopOfMemory,
+    EntryOutsideImage {
+        entry_cs: u16,
+        entry_ip: u16,
+        image_len: usize,
+    },
+    StackSsWrapsDuringRelocation,
     NotAnElfFile,
     UnsupportedElfClass,
     UnsupportedElfEndian,
@@ -25,23 +28,23 @@ impl std::fmt::Display for Error {
                 max_alloc,
             } => write!(
                 f,
-                "min_alloc (0x{min_alloc:04X}) must not exceed max_alloc (0x{max_alloc:04X}); \
-                 DOS cannot load the program if the minimum allocation cannot be met"
+                "min_alloc (0x{min_alloc:04X}) exceeds max_alloc (0x{max_alloc:04X})"
             ),
-            Self::EntryIpAtLastByteOfSegment => write!(
+            Self::EntryOutsideImage {
+                entry_cs,
+                entry_ip,
+                image_len,
+            } => {
+                let offset = (*entry_cs as u32) * 16 + (*entry_ip as u32);
+                write!(
+                    f,
+                    "entry CS:IP (0x{entry_cs:04X}:0x{entry_ip:04X}) resolves to offset \
+                     0x{offset:X} of the module, past its {image_len} bytes"
+                )
+            }
+            Self::StackSsWrapsDuringRelocation => write!(
                 f,
-                "entry_ip 0xFFFF is the last byte of a 64 KiB segment; the first fetch wraps to \
-                 the segment start, so valid code cannot begin there"
-            ),
-            Self::EntryCsAtTopOfMemory => write!(
-                f,
-                "entry_cs 0xFFFF aims the code segment at the top of the 1 MiB map (0xFFFF0); the \
-                 loader would relocate it into unmapped memory"
-            ),
-            Self::StackSsAtTopOfMemory => write!(
-                f,
-                "stack_ss 0xFFFF aims the stack segment at the top of the 1 MiB map (0xFFFF0); \
-                 the loader would relocate it into unmapped memory"
+                "stack_ss 0xFFFF wraps into low memory once the load segment is added"
             ),
             Self::NotAnElfFile => write!(
                 f,
