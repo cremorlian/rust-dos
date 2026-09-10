@@ -13,7 +13,8 @@ fn convert_minimal_elf_returns_mz_with_image_appended() {
 }
 
 #[test]
-fn convert_with_stub_places_shell_between_header_and_image_and_forces_zero_entry() -> Result<(), Error> {
+fn convert_with_stub_places_shell_between_header_and_image_and_forces_zero_entry()
+-> Result<(), Error> {
     let out = Converter::new().stub(&[0xFA, 0xFB])?.convert(MINIMAL_ELF)?;
     assert_eq!(out.len(), 37);
     assert_eq!(&out[0..2], b"MZ");
