@@ -2,22 +2,34 @@
 
 #[derive(Debug)]
 pub enum Error {
-    MaxAllocLessThanMinAlloc { min_alloc: u16, max_alloc: u16 },
+    MaxAllocLessThanMinAlloc {
+        min_alloc: u16,
+        max_alloc: u16,
+    },
     EntryOutsideImage {
         entry_cs: u16,
         entry_ip: u16,
-        image_len: usize,
+        module_len: usize,
     },
     StackSsWrapsDuringRelocation,
+    EmptyStub,
+    EntryOwnedByShell {
+        entry_cs: u16,
+        entry_ip: u16,
+    },
     NotAnElfFile,
     UnsupportedElfClass,
     UnsupportedElfEndian,
-    UnsupportedElfType { e_type: u16 },
+    UnsupportedElfType {
+        e_type: u16,
+    },
     Truncated,
     NoLoadableSegments,
     InvalidSegmentSize,
     InvalidSegmentRange,
-    OutputTooLarge { pages: u32 },
+    OutputTooLarge {
+        pages: u32,
+    },
 }
 
 impl std::fmt::Display for Error {
@@ -33,18 +45,24 @@ impl std::fmt::Display for Error {
             Self::EntryOutsideImage {
                 entry_cs,
                 entry_ip,
-                image_len,
+                module_len,
             } => {
                 let offset = (*entry_cs as u32) * 16 + (*entry_ip as u32);
                 write!(
                     f,
                     "entry CS:IP (0x{entry_cs:04X}:0x{entry_ip:04X}) resolves to offset \
-                     0x{offset:X} of the module, past its {image_len} bytes"
+                     0x{offset:X} of the module, past its {module_len} bytes"
                 )
             }
             Self::StackSsWrapsDuringRelocation => write!(
                 f,
                 "stack_ss 0xFFFF wraps into low memory once the load segment is added"
+            ),
+            Self::EmptyStub => write!(f, "stub is empty; a shell must contain at least one byte"),
+            Self::EntryOwnedByShell { entry_cs, entry_ip } => write!(
+                f,
+                "shell mode fixes the entry at 0:0; a caller-supplied CS:IP \
+                 (0x{entry_cs:04X}:0x{entry_ip:04X}) is a contradiction"
             ),
             Self::NotAnElfFile => write!(
                 f,

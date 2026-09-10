@@ -2,7 +2,9 @@
 
 pub mod error;
 
+mod compose;
 mod elf;
+mod layout;
 mod mz_header;
 mod strictness;
 
@@ -17,6 +19,7 @@ pub struct Converter {
     stack_ss: u16,
     stack_sp: u16,
     strictness: Strictness,
+    layout: layout::LayoutConfig,
 }
 
 impl Default for Converter {
@@ -35,6 +38,7 @@ impl Converter {
             stack_ss: 0,
             stack_sp: 0,
             strictness: Strictness::Error,
+            layout: layout::LayoutConfig::ImageOnly,
         }
     }
 
@@ -73,22 +77,33 @@ impl Converter {
         self
     }
 
+    pub fn stub(mut self, shell: &[u8]) -> Result<Self, Error> {
+        self.layout = layout::shell(shell)?;
+        Ok(self)
+    }
+
     pub fn convert(&self, elf: &[u8]) -> Result<Vec<u8>, Error> {
         let image = elf::extract_image(elf)?;
-        let mut out = mz_header::build_headers(
+        let resolved = layout::resolve(
+            &self.layout,
+            self.entry_cs,
+            self.entry_ip,
+            image.len(),
+            self.strictness,
+        )?;
+        let (entry_cs, entry_ip) = resolved.entry();
+        let header = mz_header::build_headers(
             &mz_header::HeaderSpecs {
                 min_alloc: self.min_alloc,
                 max_alloc: self.max_alloc,
                 stack_ss: self.stack_ss,
                 stack_sp: self.stack_sp,
-                entry_ip: self.entry_ip,
-                entry_cs: self.entry_cs,
+                entry_ip,
+                entry_cs,
             },
-            image.len(),
+            resolved.module_len(),
             self.strictness,
-        )?
-        .to_vec();
-        out.extend_from_slice(&image);
-        Ok(out)
+        )?;
+        Ok(compose::pack(&header, resolved.stub(), &image))
     }
 }
