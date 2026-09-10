@@ -58,21 +58,23 @@ pub(crate) struct HostOutcome {
 }
 
 #[cfg(target_arch = "x86")]
-pub(crate) unsafe fn execute(call: &mut PreparedCall) -> HostOutcome {
+pub(crate) fn execute(call: &mut PreparedCall) -> HostOutcome {
     let rmcs_ptr = core::ptr::addr_of_mut!(call.rmcs) as usize as u32;
     let mut host_cf = 0u8;
     let mut host_ax = 0u32;
 
-    asm!(
-        "int $0x31",
-        "setc {cf}",
-        cf = out(reg_byte) host_cf,
-        inlateout("eax") 0x0300u32 => host_ax,
-        inlateout("ebx") (call.int_no as u32) => _,
-        inlateout("edi") rmcs_ptr => _,
-        lateout("ecx") _, lateout("edx") _, lateout("esi") _, lateout("ebp") _,
-        options(nostack),
-    );
+    unsafe {
+        asm!(
+            "int $0x31",
+            "setc {cf}",
+            cf = out(reg_byte) host_cf,
+            inlateout("eax") 0x0300u32 => host_ax,
+            inlateout("ebx") (call.int_no as u32) => _,
+            inlateout("edi") rmcs_ptr => _,
+            lateout("ecx") _, lateout("edx") _, lateout("esi") _, lateout("ebp") _,
+            options(nostack),
+        );
+    }
 
     HostOutcome {
         host_cf: host_cf != 0,
@@ -81,7 +83,7 @@ pub(crate) unsafe fn execute(call: &mut PreparedCall) -> HostOutcome {
 }
 
 #[cfg(not(target_arch = "x86"))]
-pub(crate) unsafe fn execute(_call: &mut PreparedCall) -> HostOutcome {
+pub(crate) fn execute(_call: &mut PreparedCall) -> HostOutcome {
     unreachable!(
         "execute() raises int $0x31 to simulate a real-mode DOS call, and only \
          that can ever run on a 32-bit x86 DPMI target; host builds stub it out"

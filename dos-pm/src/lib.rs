@@ -3,3 +3,4 @@
 mod raw;
 
 pub mod console;
+pub use console::{Error, Stdout};
