@@ -24,16 +24,6 @@ pub(crate) fn build_headers(
             },
         )?;
     }
-    if specs.entry_cs as u32 * 16 + specs.entry_ip as u32 >= module_len as u32 {
-        enforce(
-            strictness,
-            Error::EntryOutsideImage {
-                entry_cs: specs.entry_cs,
-                entry_ip: specs.entry_ip,
-                module_len,
-            },
-        )?;
-    }
     if specs.stack_ss == 0xFFFF {
         enforce(strictness, Error::StackSsWrapsDuringRelocation)?;
     }
@@ -464,66 +454,6 @@ mod tests {
     }
 
     #[test]
-    fn build_headers_rejects_entry_outside_image() {
-        let specs = HeaderSpecs {
-            entry_cs: 0x0100,
-            entry_ip: 0x0001,
-            ..base_specs()
-        };
-        let result = try_build(&specs, Strictness::Error);
-        assert!(matches!(
-            result,
-            Err(Error::EntryOutsideImage {
-                entry_cs: 0x0100,
-                entry_ip: 0x0001,
-                module_len: TEST_IMAGE_LEN,
-            })
-        ));
-    }
-
-    #[test]
-    fn build_headers_rejects_entry_at_image_end() {
-        let specs = HeaderSpecs {
-            entry_cs: 0x0100,
-            entry_ip: 0x0000,
-            ..base_specs()
-        };
-        let result = try_build(&specs, Strictness::Error);
-        assert!(matches!(result, Err(Error::EntryOutsideImage { .. })));
-    }
-
-    #[test]
-    fn build_headers_rejects_entry_ip_0x_ffff_as_outside_image() {
-        let specs = HeaderSpecs {
-            entry_ip: 0xFFFF,
-            ..base_specs()
-        };
-        let result = try_build(&specs, Strictness::Error);
-        assert!(matches!(result, Err(Error::EntryOutsideImage { .. })));
-    }
-
-    #[test]
-    fn build_headers_rejects_entry_cs_0x_ffff_as_outside_image() {
-        let specs = HeaderSpecs {
-            entry_cs: 0xFFFF,
-            ..base_specs()
-        };
-        let result = try_build(&specs, Strictness::Error);
-        assert!(matches!(result, Err(Error::EntryOutsideImage { .. })));
-    }
-
-    #[test]
-    fn build_headers_accepts_entry_at_last_valid_offset() {
-        let specs = HeaderSpecs {
-            entry_cs: 0x00FF,
-            entry_ip: 0x000F,
-            ..base_specs()
-        };
-        let result = try_build(&specs, Strictness::Error);
-        assert!(result.is_ok());
-    }
-
-    #[test]
     fn build_headers_rejects_stack_ss_wraps_during_relocation() {
         let specs = HeaderSpecs {
             stack_ss: 0xffff,
@@ -538,10 +468,10 @@ mod tests {
         let specs = HeaderSpecs {
             min_alloc: 0x0100,
             max_alloc: 0x00ff,
-            entry_ip: 0xffff,
-            entry_cs: 0xffff,
             stack_ss: 0xffff,
             stack_sp: 0,
+            entry_ip: 0,
+            entry_cs: 0,
         };
         let result = try_build(&specs, Strictness::Allow);
         assert!(result.is_ok());

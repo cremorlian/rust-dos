@@ -62,11 +62,23 @@ pub(crate) fn resolve(
     strictness: Strictness,
 ) -> Result<Layout<'_>, Error> {
     match config {
-        LayoutConfig::ImageOnly => Ok(Layout::ImageOnly(ImageOnlyLayout {
-            entry_cs,
-            entry_ip,
-            image_len,
-        })),
+        LayoutConfig::ImageOnly => {
+            if entry_cs as u32 * 16 + entry_ip as u32 >= image_len as u32 {
+                enforce(
+                    strictness,
+                    Error::EntryOutsideImage {
+                        entry_cs,
+                        entry_ip,
+                        module_len: image_len,
+                    },
+                )?;
+            }
+            Ok(Layout::ImageOnly(ImageOnlyLayout {
+                entry_cs,
+                entry_ip,
+                image_len,
+            }))
+        }
         LayoutConfig::Shell { shell } => {
             if entry_cs != 0 || entry_ip != 0 {
                 enforce(strictness, Error::EntryOwnedByShell { entry_cs, entry_ip })?;
@@ -84,13 +96,73 @@ mod tests {
     use super::*;
 
     const IMAGE: &[u8] = &[0x90, 0x90, 0x90];
+    const IMAGE_LEN: usize = 0x1000;
+
+    #[test]
+    fn resolve_rejects_entry_outside_image() {
+        let config = LayoutConfig::ImageOnly;
+        assert!(matches!(
+            resolve(&config, 0x0100, 0x0001, IMAGE_LEN, Strictness::Error),
+            Err(Error::EntryOutsideImage {
+                entry_cs: 0x0100,
+                entry_ip: 0x0001,
+                module_len: IMAGE_LEN,
+            })
+        ));
+    }
+
+    #[test]
+    fn resolve_rejects_entry_at_image_end() {
+        let config = LayoutConfig::ImageOnly;
+        assert!(matches!(
+            resolve(&config, 0x0100, 0x0000, IMAGE_LEN, Strictness::Error),
+            Err(Error::EntryOutsideImage { .. })
+        ));
+    }
+
+    #[test]
+    fn resolve_rejects_entry_ip_far_outside_module() {
+        let config = LayoutConfig::ImageOnly;
+        assert!(matches!(
+            resolve(&config, 0, 0xFFFF, IMAGE_LEN, Strictness::Error),
+            Err(Error::EntryOutsideImage { .. })
+        ));
+    }
+
+    #[test]
+    fn resolve_rejects_entry_cs_far_outside_module() {
+        let config = LayoutConfig::ImageOnly;
+        assert!(matches!(
+            resolve(&config, 0xFFFF, 0, IMAGE_LEN, Strictness::Error),
+            Err(Error::EntryOutsideImage { .. })
+        ));
+    }
+
+    #[test]
+    fn resolve_accepts_entry_at_last_valid_offset() {
+        let config = LayoutConfig::ImageOnly;
+        let layout =
+            resolve(&config, 0x00FF, 0x000F, IMAGE_LEN, Strictness::Error).expect("resolve");
+        assert_eq!(layout.entry(), (0x00FF, 0x000F));
+    }
+
+    #[test]
+    fn resolve_under_allow_skips_module_bound() {
+        let config = LayoutConfig::ImageOnly;
+        assert_eq!(
+            resolve(&config, 0xFFFF, 0xFFFF, IMAGE_LEN, Strictness::Allow)
+                .expect("resolve")
+                .entry(),
+            (0xFFFF, 0xFFFF)
+        );
+    }
 
     #[test]
     fn resolve_image_only_echoes_caller_entry() {
         let config = LayoutConfig::ImageOnly;
-        let layout = resolve(&config, 0x0100, 0x0001, IMAGE.len(), Strictness::Error)
-            .expect("image-only resolve");
-        assert_eq!(layout.entry(), (0x0100, 0x0001));
+        let layout =
+            resolve(&config, 0, 2, IMAGE.len(), Strictness::Error).expect("image-only resolve");
+        assert_eq!(layout.entry(), (0, 2));
         assert_eq!(layout.module_len(), IMAGE.len());
         assert_eq!(layout.stub(), &[] as &[u8]);
     }
