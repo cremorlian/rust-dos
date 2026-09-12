@@ -84,7 +84,7 @@ impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Error::WriteZero => f.write_str("DOS write returned zero bytes for a non-empty buffer"),
-            Error::Dos { code } => write!(f, "DOS write failed with error 0x{code:04X}"),
+            Error::Dos { code } => write!(f, "DOS call failed with error 0x{code:04X}"),
             Error::Dpmi { code } => write!(f, "DPMI call failed with error 0x{code:04X}"),
             Error::BufferUnreachable => f.write_str(
                 "buffer extends past the 1 MiB real-mode limit; the DOS call would access wrapped memory",
