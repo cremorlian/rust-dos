@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn surface_read_returns_bytes_read() {
-        for (eax, expected) in [(0x0000, 0), (0x0003, 3), (0xFFFF, 0xFFFF as usize)] {
+        for (eax, expected) in [(0x0000, 0), (0x0003, 3), (0xFFFF, 0xFFFF_usize)] {
             let mut rmcs = Rmcs::zeroed();
             rmcs.ecx = 3;
             rmcs.eax = eax;
@@ -442,7 +442,7 @@ mod tests {
 
     #[test]
     fn surface_write_returns_bytes_written() {
-        for (eax, expected) in [(0x0001, 1), (0x0003, 3), (0xFFFF, 0xFFFF as usize)] {
+        for (eax, expected) in [(0x0001, 1), (0x0003, 3), (0xFFFF, 0xFFFF_usize)] {
             let mut rmcs = Rmcs::zeroed();
             rmcs.ecx = 3;
             rmcs.eax = eax;
