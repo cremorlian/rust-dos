@@ -192,6 +192,42 @@ impl eio::Read for Stdin {
     }
 }
 
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => {{
+        let _ = ::core::fmt::Write::write_fmt(&mut ($crate::Stdout), ::core::format_args!($($arg)*));
+    }};
+}
+
+#[macro_export]
+macro_rules! println {
+    () => {{
+        let _ = ::core::fmt::Write::write_str(&mut ($crate::Stdout), "\r\n");
+    }};
+    ($($arg:tt)*) => {{
+        let _ = ::core::fmt::Write::write_fmt(&mut ($crate::Stdout), ::core::format_args!($($arg)*));
+        let _ = ::core::fmt::Write::write_str(&mut ($crate::Stdout), "\r\n");
+    }};
+}
+
+#[macro_export]
+macro_rules! eprint {
+    ($($arg:tt)*) => {{
+        let _ = ::core::fmt::Write::write_fmt(&mut ($crate::Stderr), ::core::format_args!($($arg)*));
+    }};
+}
+
+#[macro_export]
+macro_rules! eprintln {
+    () => {{
+        let _ = ::core::fmt::Write::write_str(&mut ($crate::Stderr), "\r\n");
+    }};
+    ($($arg:tt)*) => {{
+        let _ = ::core::fmt::Write::write_fmt(&mut ($crate::Stderr), ::core::format_args!($($arg)*));
+        let _ = ::core::fmt::Write::write_str(&mut ($crate::Stderr), "\r\n");
+    }};
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
