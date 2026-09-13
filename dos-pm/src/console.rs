@@ -159,6 +159,18 @@ impl eio::Write for Stderr {
     }
 }
 
+impl core::fmt::Write for Stdout {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        eio::Write::write_all(self, s.as_bytes()).map_err(|_| core::fmt::Error)
+    }
+}
+
+impl core::fmt::Write for Stderr {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        eio::Write::write_all(self, s.as_bytes()).map_err(|_| core::fmt::Error)
+    }
+}
+
 /// Zero-sized handle to the DOS console standard input, used by value.
 pub struct Stdin;
 
