@@ -34,6 +34,11 @@ pub(crate) fn prepare_write(handle: u16, lin: u32, len: usize) -> Result<Prepare
     })
 }
 
+pub(crate) fn prepare_write_stderr(lin: u32, len: usize) -> Result<PreparedCall, Error> {
+    const STDERR_HANDLE: u16 = 2;
+    prepare_write(STDERR_HANDLE, lin, len)
+}
+
 pub(crate) fn prepare_read(handle: u16, lin: u32, len: usize) -> Result<PreparedCall, Error> {
     if !is_reachable(lin, len) {
         return Err(Error::BufferUnreachable);
@@ -118,8 +123,33 @@ impl eio::ErrorType for Stdout {
 /// `Error::BufferUnreachable` without writing.
 impl eio::Write for Stdout {
     fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
+        const STDOUT_HANDLE: u16 = 1;
         let lin = buf.as_ptr() as usize as u32;
-        let mut call = prepare_write(1, lin, buf.len())?;
+        let mut call = prepare_write(STDOUT_HANDLE, lin, buf.len())?;
+        let o = execute(&mut call);
+        surface_write(&call, o)
+    }
+
+    fn flush(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
+/// Zero-sized handle to the DOS console standard error, used by value.
+pub struct Stderr;
+
+impl eio::ErrorType for Stderr {
+    type Error = Error;
+}
+
+/// Writes `buf` to the DOS standard error handle in one `AH=40h` call,
+/// capped at 64 KiB.
+///
+/// Any error the standard output can produce applies identically here.
+impl eio::Write for Stderr {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
+        let lin = buf.as_ptr() as usize as u32;
+        let mut call = prepare_write_stderr(lin, buf.len())?;
         let o = execute(&mut call);
         surface_write(&call, o)
     }
@@ -142,8 +172,9 @@ impl eio::ErrorType for Stdin {
 /// limit returns `Error::BufferUnreachable` without reading.
 impl eio::Read for Stdin {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
+        const STDIN_HANDLE: u16 = 0;
         let lin = buf.as_mut_ptr() as usize as u32;
-        let mut call = prepare_read(0, lin, buf.len())?;
+        let mut call = prepare_read(STDIN_HANDLE, lin, buf.len())?;
         let o = execute(&mut call);
         surface_read(&call, o)
     }
@@ -151,11 +182,28 @@ impl eio::Read for Stdin {
 
 #[cfg(test)]
 mod tests {
-    use super::{Error, prepare_read, prepare_write, surface_read, surface_write};
+    use super::{
+        Error, prepare_read, prepare_write, prepare_write_stderr, surface_read, surface_write,
+    };
     use crate::raw::{HostOutcome, PreparedCall, Rmcs};
 
     fn call(rmcs: Rmcs) -> PreparedCall {
         PreparedCall { rmcs, int_no: 0x21 }
+    }
+
+    #[test]
+    fn stderr_write_targets_handle_2() {
+        let cmd = prepare_write_stderr(0x12345, 2).expect("reachable");
+
+        let mut rmcs = Rmcs::zeroed();
+        rmcs.eax = 0x4000;
+        rmcs.ebx = 2;
+        rmcs.ecx = 2;
+        rmcs.edx = 0x5;
+        rmcs.ds = 0x1234;
+        let expected = PreparedCall { rmcs, int_no: 0x21 };
+
+        assert_eq!(cmd, expected);
     }
 
     #[test]
