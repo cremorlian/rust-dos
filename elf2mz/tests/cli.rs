@@ -37,6 +37,8 @@ fn converts_elf_with_stub_to_mz_output() {
             .arg(&output)
             .arg("--min-alloc")
             .arg("0x10")
+            .arg("--max-alloc")
+            .arg("0x20")
             .arg("--stub")
             .arg(&stub)
             .status()
@@ -50,7 +52,7 @@ fn converts_elf_with_stub_to_mz_output() {
     assert_eq!(u16::from_le_bytes([out[2], out[3]]), 37);
     assert_eq!(u16::from_le_bytes([out[4], out[5]]), 1);
     assert_eq!(u16::from_le_bytes([out[10], out[11]]), 0x10);
-    assert_eq!(u16::from_le_bytes([out[12], out[13]]), 0xFFFF);
+    assert_eq!(u16::from_le_bytes([out[12], out[13]]), 0x20);
     assert_eq!(&out[32..34], &[0xFA, 0xFB]);
     assert_eq!(&out[34..37], &[0x90, 0x90, 0x90]);
     assert_eq!(u16::from_le_bytes([out[20], out[21]]), 0);

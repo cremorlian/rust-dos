@@ -37,6 +37,7 @@ pub(crate) struct ConvertParams<'a> {
     pub(crate) output: &'a str,
     pub(crate) stub: Option<&'a str>,
     pub(crate) min_alloc: Option<u16>,
+    pub(crate) max_alloc: Option<u16>,
 }
 
 pub(crate) fn parse(args: &[String]) -> Result<ConvertParams<'_>, CliError> {
@@ -53,19 +54,26 @@ pub(crate) fn parse(args: &[String]) -> Result<ConvertParams<'_>, CliError> {
         .iter()
         .find(|opt| opt.name == "stub")
         .map(|opt| opt.value);
-    let min_alloc = match options.iter().find(|opt| opt.name == "min-alloc") {
-        Some(opt) => Some(
-            parse_hex_u16(opt.value)
-                .ok_or_else(|| CliError::InvalidOptionValue("min-alloc".to_string()))?,
-        ),
-        None => None,
-    };
+    let min_alloc = parse_hex_option(&options, "min-alloc")?;
+    let max_alloc = parse_hex_option(&options, "max-alloc")?;
     Ok(ConvertParams {
         input,
         output,
         stub,
         min_alloc,
+        max_alloc,
     })
+}
+
+fn parse_hex_option(options: &[Opt<'_>], name: &str) -> Result<Option<u16>, CliError> {
+    match options.iter().find(|opt| opt.name == name) {
+        Some(opt) => {
+            Ok(Some(parse_hex_u16(opt.value).ok_or_else(|| {
+                CliError::InvalidOptionValue(name.to_string())
+            })?))
+        }
+        None => Ok(None),
+    }
 }
 
 fn parse_hex_u16(value: &str) -> Option<u16> {
@@ -185,6 +193,32 @@ mod tests {
         assert!(matches!(
             parse(&args),
             Err(CliError::InvalidOptionValue(option)) if option == "min-alloc"
+        ));
+    }
+
+    #[test]
+    fn parse_max_alloc_value() {
+        let args = [
+            "in.elf".to_string(),
+            "out.exe".to_string(),
+            "--max-alloc".to_string(),
+            "0x20".to_string(),
+        ];
+        let params = parse(&args).unwrap();
+        assert_eq!(params.max_alloc, Some(0x20));
+    }
+
+    #[test]
+    fn parse_returns_invalid_max_alloc_value() {
+        let args = [
+            "in.elf".to_string(),
+            "out.exe".to_string(),
+            "--max-alloc".to_string(),
+            "zzz".to_string(),
+        ];
+        assert!(matches!(
+            parse(&args),
+            Err(CliError::InvalidOptionValue(option)) if option == "max-alloc"
         ));
     }
 

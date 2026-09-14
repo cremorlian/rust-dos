@@ -37,6 +37,9 @@ fn convert(params: &args::ConvertParams) -> Result<(), Box<dyn Error>> {
     if let Some(min_alloc) = params.min_alloc {
         converter = converter.min_alloc(min_alloc);
     }
+    if let Some(max_alloc) = params.max_alloc {
+        converter = converter.max_alloc(max_alloc);
+    }
     if let Some(stub) = params.stub {
         let stub = fs::read(stub)?;
         converter = converter.stub(&stub)?;
