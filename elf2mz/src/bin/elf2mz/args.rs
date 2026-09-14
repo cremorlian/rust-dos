@@ -1,12 +1,7 @@
-use std::error::Error;
 use std::fmt;
-use std::fs;
-use std::process::exit;
-
-use elf2mz::Converter;
 
 #[derive(Debug)]
-enum CliError {
+pub(crate) enum CliError {
     TooFewArguments,
     ExtraArguments,
     UnknownOption(String),
@@ -27,41 +22,33 @@ impl fmt::Display for CliError {
 }
 
 #[derive(Debug)]
-struct Opt<'a> {
-    name: &'a str,
-    value: &'a str,
+pub(crate) struct Opt<'a> {
+    pub(crate) name: &'a str,
+    pub(crate) value: &'a str,
 }
 
 #[derive(Debug)]
-struct ConvertParams<'a> {
-    input: &'a str,
-    output: &'a str,
-    options: Vec<Opt<'a>>,
+pub(crate) struct ConvertParams<'a> {
+    pub(crate) input: &'a str,
+    pub(crate) output: &'a str,
+    pub(crate) options: Vec<Opt<'a>>,
 }
 
-fn main() {
-    let args = match std::env::args_os()
-        .skip(1)
-        .map(|arg| arg.into_string())
-        .collect::<Result<Vec<String>, _>>()
-    {
-        Ok(args) => args,
-        Err(_) => {
-            eprintln!("elf2mz: argument is not valid UTF-8");
-            exit(2);
-        }
-    };
-    let params = match run(&args) {
-        Ok(params) => params,
-        Err(err) => {
-            eprintln!("elf2mz: {err}");
-            exit(2);
-        }
-    };
-    if let Err(err) = convert(&params) {
-        eprintln!("elf2mz: {err}");
-        exit(1);
+pub(crate) fn parse(args: &[String]) -> Result<ConvertParams<'_>, CliError> {
+    let (positionals, options) = partition(args)?;
+    if positionals.len() < 2 {
+        return Err(CliError::TooFewArguments);
     }
+    if positionals.len() > 2 {
+        return Err(CliError::ExtraArguments);
+    }
+    let input = positionals[0];
+    let output = positionals[1];
+    Ok(ConvertParams {
+        input,
+        output,
+        options,
+    })
 }
 
 fn partition<'a>(args: &'a [String]) -> Result<(Vec<&'a str>, Vec<Opt<'a>>), CliError> {
@@ -94,50 +81,21 @@ fn partition<'a>(args: &'a [String]) -> Result<(Vec<&'a str>, Vec<Opt<'a>>), Cli
     Ok((positionals, options))
 }
 
-fn run(args: &[String]) -> Result<ConvertParams<'_>, CliError> {
-    let (positionals, options) = partition(args)?;
-    if positionals.len() < 2 {
-        return Err(CliError::TooFewArguments);
-    }
-    if positionals.len() > 2 {
-        return Err(CliError::ExtraArguments);
-    }
-    let input = positionals[0];
-    let output = positionals[1];
-    Ok(ConvertParams {
-        input,
-        output,
-        options,
-    })
-}
-
-fn convert(params: &ConvertParams) -> Result<(), Box<dyn Error>> {
-    let elf = fs::read(params.input)?;
-    let exe = if let Some(opt) = params.options.iter().find(|opt| opt.name == "stub") {
-        let stub = fs::read(opt.value)?;
-        Converter::new().stub(&stub)?.convert(&elf)?
-    } else {
-        Converter::new().convert(&elf)?
-    };
-    fs::write(params.output, exe)?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn run_parses_input_and_output() {
+    fn parse_input_and_output() {
         let args = ["in.elf".to_string(), "out.exe".to_string()];
-        let params = run(&args).unwrap();
+        let params = parse(&args).unwrap();
         assert_eq!(params.input, "in.elf");
         assert_eq!(params.output, "out.exe");
         assert!(params.options.is_empty());
     }
 
     #[test]
-    fn run_parses_multiple_options_with_space_values() {
+    fn parse_multiple_options_with_space_values() {
         let args = [
             "in.elf".to_string(),
             "--stub".to_string(),
@@ -146,7 +104,7 @@ mod tests {
             "--min-alloc".to_string(),
             "0x10".to_string(),
         ];
-        let params = run(&args).unwrap();
+        let params = parse(&args).unwrap();
         assert_eq!(params.input, "in.elf");
         assert_eq!(params.output, "out.exe");
         assert_eq!(params.options.len(), 2);
@@ -161,13 +119,13 @@ mod tests {
     }
 
     #[test]
-    fn run_parses_option_with_equals_value() {
+    fn parse_option_with_equals_value() {
         let args = [
             "in.elf".to_string(),
             "out.exe".to_string(),
             "--stub=s.bin".to_string(),
         ];
-        let params = run(&args).unwrap();
+        let params = parse(&args).unwrap();
         assert_eq!(params.input, "in.elf");
         assert_eq!(params.output, "out.exe");
         assert_eq!(params.options.len(), 1);
@@ -178,32 +136,32 @@ mod tests {
     }
 
     #[test]
-    fn run_returns_error_for_too_few_arguments() {
+    fn parse_returns_error_for_too_few_arguments() {
         let args = ["in.elf".to_string()];
-        assert!(matches!(run(&args), Err(CliError::TooFewArguments)));
+        assert!(matches!(parse(&args), Err(CliError::TooFewArguments)));
     }
 
     #[test]
-    fn run_returns_extra_arguments() {
+    fn parse_returns_extra_arguments() {
         let args = ["a.elf".to_string(), "b.exe".to_string(), "c".to_string()];
-        assert!(matches!(run(&args), Err(CliError::ExtraArguments)));
+        assert!(matches!(parse(&args), Err(CliError::ExtraArguments)));
     }
 
     #[test]
-    fn run_returns_missing_option_value() {
+    fn parse_returns_missing_option_value() {
         let args = [
             "in.elf".to_string(),
             "out.exe".to_string(),
             "--stub".to_string(),
         ];
         assert!(matches!(
-            run(&args),
+            parse(&args),
             Err(CliError::MissingOptionValue(option)) if option == "stub"
         ));
     }
 
     #[test]
-    fn run_returns_duplicate_option() {
+    fn parse_returns_duplicate_option() {
         let args = [
             "in.elf".to_string(),
             "out.exe".to_string(),
@@ -213,13 +171,13 @@ mod tests {
             "b.bin".to_string(),
         ];
         assert!(matches!(
-            run(&args),
+            parse(&args),
             Err(CliError::DuplicateOption(option)) if option == "stub"
         ));
     }
 
     #[test]
-    fn run_returns_unknown_option() {
+    fn parse_returns_unknown_option() {
         let cases = [
             vec![
                 "in.elf".to_string(),
@@ -235,7 +193,7 @@ mod tests {
         ];
         for args in cases {
             assert!(matches!(
-                run(&args),
+                parse(&args),
                 Err(CliError::UnknownOption(option)) if option == "bogus"
             ));
         }
