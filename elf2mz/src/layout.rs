@@ -1,6 +1,8 @@
 use crate::strictness::enforce;
 use crate::{Error, Strictness};
 
+const MAX_EXPRESSIBLE_BLOCK_END: u32 = 0xFFFEF;
+
 pub(crate) enum LayoutConfig {
     ImageOnly,
     Shell { shell: Vec<u8> },
@@ -41,6 +43,28 @@ impl Layout<'_> {
         match self {
             Layout::ImageOnly(_) => &[],
             Layout::ShellImage(layout) => layout.stub,
+        }
+    }
+
+    pub(crate) fn resolve_stack(
+        &self,
+        min_alloc: u16,
+        stack_set: bool,
+        stack_ss: u16,
+        stack_sp: u16,
+    ) -> Result<(u16, u16), Error> {
+        if stack_set {
+            return Ok((stack_ss, stack_sp));
+        }
+        match self {
+            Layout::ShellImage(_) => {
+                let block_end = self.module_len() as u32 + u32::from(min_alloc) * 16;
+                if block_end > MAX_EXPRESSIBLE_BLOCK_END {
+                    return Err(Error::StackBlockEndUnrepresentable { block_end });
+                }
+                Ok(((block_end >> 4) as u16, (block_end & 0xF) as u16))
+            }
+            Layout::ImageOnly(_) => Ok((0, 0)),
         }
     }
 }
@@ -221,5 +245,70 @@ mod tests {
         };
         let layout = resolve(&config, 0, 0, IMAGE.len(), Strictness::Error).expect("shell resolve");
         assert_eq!(layout.stub(), &[0xFA, 0xFB]);
+    }
+
+    #[test]
+    fn resolve_stack_shell_mode_default_is_block_end() {
+        let layout = Layout::ShellImage(ShellImageLayout {
+            stub: &[0xFA, 0xFB],
+            image_len: IMAGE_LEN,
+        });
+        assert!(matches!(
+            layout.resolve_stack(0, false, 0, 0),
+            Ok((ss, sp)) if ss == 0x0100 && sp == 0x0002
+        ));
+    }
+
+    #[test]
+    fn resolve_stack_image_only_default_is_zero_pair() {
+        let layout = Layout::ImageOnly(ImageOnlyLayout {
+            entry_cs: 0,
+            entry_ip: 0,
+            image_len: IMAGE_LEN,
+        });
+        assert!(matches!(
+            layout.resolve_stack(0, false, 0, 0),
+            Ok((ss, sp)) if ss == 0 && sp == 0
+        ));
+    }
+
+    #[test]
+    fn resolve_stack_caller_set_pair_wins() {
+        let layout = Layout::ImageOnly(ImageOnlyLayout {
+            entry_cs: 0,
+            entry_ip: 0,
+            image_len: IMAGE_LEN,
+        });
+        assert!(matches!(
+            layout.resolve_stack(0, true, 0x1234, 0x5678),
+            Ok((ss, sp)) if ss == 0x1234 && sp == 0x5678
+        ));
+    }
+
+    #[test]
+    fn resolve_stack_block_end_over_limit_is_unconditional_error() {
+        let stub = [0x00; 0xF];
+        let layout = Layout::ShellImage(ShellImageLayout {
+            stub: &stub,
+            image_len: IMAGE_LEN,
+        });
+        assert!(matches!(
+            layout.resolve_stack(0xFFFF, false, 0, 0),
+            Err(Error::StackBlockEndUnrepresentable { block_end })
+                if block_end == 0x100FFF
+        ));
+    }
+
+    #[test]
+    fn resolve_stack_max_expressible_block_end_is_split() {
+        let stub = [0x00; 0xF];
+        let layout = Layout::ShellImage(ShellImageLayout {
+            stub: &stub,
+            image_len: IMAGE_LEN,
+        });
+        assert!(matches!(
+            layout.resolve_stack(0xFEFE, false, 0, 0),
+            Ok((ss, sp)) if ss == 0xFFFE && sp == 0xF
+        ));
     }
 }

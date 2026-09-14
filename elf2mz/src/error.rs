@@ -30,6 +30,9 @@ pub enum Error {
     OutputTooLarge {
         pages: u32,
     },
+    StackBlockEndUnrepresentable {
+        block_end: u32,
+    },
 }
 
 impl std::error::Error for Error {}
@@ -87,6 +90,12 @@ impl std::fmt::Display for Error {
                 f,
                 "output is too large: it spans {pages} pages, but the MZ page count (e_cp) is a u16 \
                  and can represent at most 65535 pages"
+            ),
+            Self::StackBlockEndUnrepresentable { block_end } => write!(
+                f,
+                "stack block end 0x{block_end:X} cannot be expressed as real-mode SS:SP: the \
+                 highest expressible address is 0xFFFEF (e_ss above 0xFFFE wraps after \
+                 load-segment addition, or overflows the u16 e_ss field)"
             ),
             Self::Truncated => write!(
                 f,

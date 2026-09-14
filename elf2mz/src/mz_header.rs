@@ -25,7 +25,7 @@ pub(crate) fn build_headers(
         )?;
     }
     if specs.stack_ss == 0xFFFF {
-        enforce(strictness, Error::StackSsWrapsDuringRelocation)?;
+        return Err(Error::StackSsWrapsDuringRelocation);
     }
 
     const WORD_WIDTH: usize = 2;
@@ -224,11 +224,7 @@ mod tests {
         let cases = [
             (0x0000u16, 0x0000u16, "minimum boundary"),
             (0x0010u16, 0x0010u16, "typical value"),
-            (
-                0xffffu16,
-                0xffffu16,
-                "maximum boundary (sentinel, Allow writes it)",
-            ),
+            (0xfffeu16, 0xfffeu16, "maximum boundary"),
         ];
         for (stack_ss, expected, desc) in cases {
             let out = with(&base_specs(), Strictness::Allow, |s| s.stack_ss = stack_ss);
@@ -468,7 +464,7 @@ mod tests {
         let specs = HeaderSpecs {
             min_alloc: 0x0100,
             max_alloc: 0x00ff,
-            stack_ss: 0xffff,
+            stack_ss: 0x0000,
             stack_sp: 0,
             entry_ip: 0,
             entry_cs: 0,

@@ -28,6 +28,35 @@ fn convert_with_stub_places_shell_between_header_and_image_and_forces_zero_entry
 }
 
 #[test]
+fn convert_with_stub_defaults_stack_to_block_end() -> Result<(), Error> {
+    let out = Converter::new().stub(&[0xFA, 0xFB])?.convert(MINIMAL_ELF)?;
+    let e_ss = u16::from_le_bytes([out[14], out[15]]);
+    let e_sp = u16::from_le_bytes([out[16], out[17]]);
+    assert_eq!((e_ss, e_sp), (0x0000, 0x0005));
+    Ok(())
+}
+
+#[test]
+fn convert_with_caller_set_stack_is_passed_through() -> Result<(), Error> {
+    let out = Converter::new()
+        .stub(&[0xFA, 0xFB])?
+        .stack(0x1234, 0x5678)
+        .convert(MINIMAL_ELF)?;
+    let e_ss = u16::from_le_bytes([out[14], out[15]]);
+    let e_sp = u16::from_le_bytes([out[16], out[17]]);
+    assert_eq!((e_ss, e_sp), (0x1234, 0x5678));
+    Ok(())
+}
+
+#[test]
+fn convert_image_only_defaults_stack_to_zero_pair() {
+    let out = Converter::new().convert(MINIMAL_ELF).unwrap();
+    let e_ss = u16::from_le_bytes([out[14], out[15]]);
+    let e_sp = u16::from_le_bytes([out[16], out[17]]);
+    assert_eq!((e_ss, e_sp), (0x0000, 0x0000));
+}
+
+#[test]
 fn convert_rejects_non_elf() {
     assert!(matches!(
         Converter::new().convert(b"not an elf file"),
