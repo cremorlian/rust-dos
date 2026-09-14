@@ -7,6 +7,7 @@ pub(crate) enum CliError {
     UnknownOption(String),
     MissingOptionValue(String),
     DuplicateOption(String),
+    InvalidOptionValue(String),
 }
 
 impl fmt::Display for CliError {
@@ -17,6 +18,9 @@ impl fmt::Display for CliError {
             Self::UnknownOption(option) => write!(f, "unknown option `--{option}`"),
             Self::MissingOptionValue(option) => write!(f, "option `--{option}` requires a value"),
             Self::DuplicateOption(option) => write!(f, "option `--{option}` given more than once"),
+            Self::InvalidOptionValue(option) => {
+                write!(f, "option `--{option}` has an invalid value")
+            }
         }
     }
 }
@@ -31,7 +35,8 @@ pub(crate) struct Opt<'a> {
 pub(crate) struct ConvertParams<'a> {
     pub(crate) input: &'a str,
     pub(crate) output: &'a str,
-    pub(crate) options: Vec<Opt<'a>>,
+    pub(crate) stub: Option<&'a str>,
+    pub(crate) min_alloc: Option<u16>,
 }
 
 pub(crate) fn parse(args: &[String]) -> Result<ConvertParams<'_>, CliError> {
@@ -44,11 +49,31 @@ pub(crate) fn parse(args: &[String]) -> Result<ConvertParams<'_>, CliError> {
     }
     let input = positionals[0];
     let output = positionals[1];
+    let stub = options
+        .iter()
+        .find(|opt| opt.name == "stub")
+        .map(|opt| opt.value);
+    let min_alloc = match options.iter().find(|opt| opt.name == "min-alloc") {
+        Some(opt) => Some(
+            parse_hex_u16(opt.value)
+                .ok_or_else(|| CliError::InvalidOptionValue("min-alloc".to_string()))?,
+        ),
+        None => None,
+    };
     Ok(ConvertParams {
         input,
         output,
-        options,
+        stub,
+        min_alloc,
     })
+}
+
+fn parse_hex_u16(value: &str) -> Option<u16> {
+    let digits = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+        .unwrap_or(value);
+    u16::from_str_radix(digits, 16).ok()
 }
 
 fn partition<'a>(args: &'a [String]) -> Result<(Vec<&'a str>, Vec<Opt<'a>>), CliError> {
@@ -91,7 +116,8 @@ mod tests {
         let params = parse(&args).unwrap();
         assert_eq!(params.input, "in.elf");
         assert_eq!(params.output, "out.exe");
-        assert!(params.options.is_empty());
+        assert_eq!(params.stub, None);
+        assert_eq!(params.min_alloc, None);
     }
 
     #[test]
@@ -107,15 +133,8 @@ mod tests {
         let params = parse(&args).unwrap();
         assert_eq!(params.input, "in.elf");
         assert_eq!(params.output, "out.exe");
-        assert_eq!(params.options.len(), 2);
-        assert_eq!(
-            (params.options[0].name, params.options[0].value),
-            ("stub", "s.bin")
-        );
-        assert_eq!(
-            (params.options[1].name, params.options[1].value),
-            ("min-alloc", "0x10")
-        );
+        assert_eq!(params.stub, Some("s.bin"));
+        assert_eq!(params.min_alloc, Some(0x10));
     }
 
     #[test]
@@ -128,11 +147,45 @@ mod tests {
         let params = parse(&args).unwrap();
         assert_eq!(params.input, "in.elf");
         assert_eq!(params.output, "out.exe");
-        assert_eq!(params.options.len(), 1);
-        assert_eq!(
-            (params.options[0].name, params.options[0].value),
-            ("stub", "s.bin")
-        );
+        assert_eq!(params.stub, Some("s.bin"));
+    }
+
+    #[test]
+    fn parse_stub_value() {
+        let args = [
+            "in.elf".to_string(),
+            "out.exe".to_string(),
+            "--stub".to_string(),
+            "s.bin".to_string(),
+        ];
+        let params = parse(&args).unwrap();
+        assert_eq!(params.stub, Some("s.bin"));
+    }
+
+    #[test]
+    fn parse_min_alloc_value() {
+        let args = [
+            "in.elf".to_string(),
+            "out.exe".to_string(),
+            "--min-alloc".to_string(),
+            "0x10".to_string(),
+        ];
+        let params = parse(&args).unwrap();
+        assert_eq!(params.min_alloc, Some(0x10));
+    }
+
+    #[test]
+    fn parse_returns_invalid_option_value() {
+        let args = [
+            "in.elf".to_string(),
+            "out.exe".to_string(),
+            "--min-alloc".to_string(),
+            "zzz".to_string(),
+        ];
+        assert!(matches!(
+            parse(&args),
+            Err(CliError::InvalidOptionValue(option)) if option == "min-alloc"
+        ));
     }
 
     #[test]

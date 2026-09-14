@@ -33,12 +33,15 @@ fn main() {
 
 fn convert(params: &args::ConvertParams) -> Result<(), Box<dyn Error>> {
     let elf = fs::read(params.input)?;
-    let exe = if let Some(opt) = params.options.iter().find(|opt| opt.name == "stub") {
-        let stub = fs::read(opt.value)?;
-        Converter::new().stub(&stub)?.convert(&elf)?
-    } else {
-        Converter::new().convert(&elf)?
-    };
+    let mut converter = Converter::new();
+    if let Some(min_alloc) = params.min_alloc {
+        converter = converter.min_alloc(min_alloc);
+    }
+    if let Some(stub) = params.stub {
+        let stub = fs::read(stub)?;
+        converter = converter.stub(&stub)?;
+    }
+    let exe = converter.convert(&elf)?;
     fs::write(params.output, exe)?;
     Ok(())
 }
