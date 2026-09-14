@@ -16,9 +16,7 @@ pub struct Converter {
     max_alloc: u16,
     entry_ip: u16,
     entry_cs: u16,
-    stack_ss: u16,
-    stack_sp: u16,
-    stack_set: bool,
+    stack: layout::StackSpec,
     strictness: Strictness,
     layout: layout::LayoutConfig,
 }
@@ -36,9 +34,7 @@ impl Converter {
             max_alloc: 0xFFFF,
             entry_ip: 0,
             entry_cs: 0,
-            stack_ss: 0,
-            stack_sp: 0,
-            stack_set: false,
+            stack: layout::StackSpec::Default,
             strictness: Strictness::Error,
             layout: layout::LayoutConfig::ImageOnly,
         }
@@ -65,9 +61,7 @@ impl Converter {
     }
 
     pub fn stack(mut self, ss: u16, sp: u16) -> Self {
-        self.stack_ss = ss;
-        self.stack_sp = sp;
-        self.stack_set = true;
+        self.stack = layout::StackSpec::Set { ss, sp };
         self
     }
 
@@ -77,39 +71,44 @@ impl Converter {
     }
 
     pub fn stub(mut self, shell: &[u8]) -> Result<Self, Error> {
-        self.layout = layout::shell(shell)?;
+        if shell.is_empty() {
+            return Err(Error::EmptyStub);
+        }
+        self.layout = layout::LayoutConfig::Shell {
+            shell: shell.to_vec(),
+        };
         Ok(self)
     }
 
     pub fn convert(&self, elf: &[u8]) -> Result<Vec<u8>, Error> {
         let image = elf::extract_image(elf)?;
-        let resolved = layout::resolve(
-            &self.layout,
-            self.entry_cs,
-            self.entry_ip,
-            image.len(),
-            self.strictness,
-        )?;
-        let (entry_cs, entry_ip) = resolved.entry();
-        let (stack_ss, stack_sp) = resolved.resolve_stack(
-            self.min_alloc,
-            self.stack_set,
-            self.stack_ss,
-            self.stack_sp,
-        )?;
+        let spec = layout::LayoutSpec {
+            layout: &self.layout,
+            entry_cs: self.entry_cs,
+            entry_ip: self.entry_ip,
+            image_len: image.len(),
+            min_alloc: self.min_alloc,
+            strictness: self.strictness,
+            stack: self.stack,
+        };
+        let resolved = layout::resolve(&spec)?;
+        let stub = match &self.layout {
+            layout::LayoutConfig::ImageOnly => &[][..],
+            layout::LayoutConfig::Shell { shell } => shell.as_slice(),
+        };
         let header = mz_header::build_headers(
             &mz_header::HeaderSpecs {
                 min_alloc: self.min_alloc,
                 max_alloc: self.max_alloc,
-                stack_ss,
-                stack_sp,
-                entry_ip,
-                entry_cs,
+                stack_ss: resolved.stack.0,
+                stack_sp: resolved.stack.1,
+                entry_ip: resolved.entry.1,
+                entry_cs: resolved.entry.0,
             },
-            resolved.module_len(),
+            resolved.module_len,
             self.strictness,
         )?;
-        Ok(compose::pack(&header, resolved.stub(), &image))
+        Ok(compose::pack(&header, stub, &image))
     }
 }
 
