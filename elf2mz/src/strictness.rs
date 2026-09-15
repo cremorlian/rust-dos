@@ -1,6 +1,6 @@
 use crate::Error;
 
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
 pub enum Strictness {
     #[default]
     Error,

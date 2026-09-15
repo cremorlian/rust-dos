@@ -60,6 +60,12 @@ impl Converter {
         self
     }
 
+    pub fn entry(mut self, cs: u16, ip: u16) -> Self {
+        self.entry_cs = cs;
+        self.entry_ip = ip;
+        self
+    }
+
     pub fn stack(mut self, ss: u16, sp: u16) -> Self {
         self.stack = layout::StackSpec::Set { ss, sp };
         self

@@ -40,6 +40,15 @@ fn convert(params: &args::ConvertParams) -> Result<(), Box<dyn Error>> {
     if let Some(max_alloc) = params.max_alloc {
         converter = converter.max_alloc(max_alloc);
     }
+    if let Some((cs, ip)) = params.entry {
+        converter = converter.entry(cs, ip);
+    }
+    if let Some((ss, sp)) = params.stack {
+        converter = converter.stack(ss, sp);
+    }
+    if let Some(strictness) = params.strictness {
+        converter = converter.strictness(strictness);
+    }
     if let Some(stub) = params.stub {
         let stub = fs::read(stub)?;
         converter = converter.stub(&stub)?;

@@ -1,5 +1,7 @@
 use std::fmt;
 
+use elf2mz::Strictness;
+
 #[derive(Debug)]
 pub(crate) enum CliError {
     TooFewArguments,
@@ -38,6 +40,9 @@ pub(crate) struct ConvertParams<'a> {
     pub(crate) stub: Option<&'a str>,
     pub(crate) min_alloc: Option<u16>,
     pub(crate) max_alloc: Option<u16>,
+    pub(crate) entry: Option<(u16, u16)>,
+    pub(crate) stack: Option<(u16, u16)>,
+    pub(crate) strictness: Option<Strictness>,
 }
 
 pub(crate) fn parse(args: &[String]) -> Result<ConvertParams<'_>, CliError> {
@@ -56,13 +61,51 @@ pub(crate) fn parse(args: &[String]) -> Result<ConvertParams<'_>, CliError> {
         .map(|opt| opt.value);
     let min_alloc = parse_hex_option(&options, "min-alloc")?;
     let max_alloc = parse_hex_option(&options, "max-alloc")?;
+    let entry = parse_hex_pair_option(&options, "entry")?;
+    let stack = parse_hex_pair_option(&options, "stack")?;
+    let strictness = match options.iter().find(|opt| opt.name == "strictness") {
+        Some(opt) => Some(
+            parse_strictness(opt.value)
+                .ok_or_else(|| CliError::InvalidOptionValue("strictness".to_string()))?,
+        ),
+        None => None,
+    };
     Ok(ConvertParams {
         input,
         output,
         stub,
         min_alloc,
         max_alloc,
+        entry,
+        stack,
+        strictness,
     })
+}
+
+fn parse_strictness(value: &str) -> Option<Strictness> {
+    match value.to_ascii_lowercase().as_str() {
+        "error" => Some(Strictness::Error),
+        "warn" => Some(Strictness::Warn),
+        "allow" => Some(Strictness::Allow),
+        _ => None,
+    }
+}
+
+fn parse_hex_pair_option(options: &[Opt<'_>], name: &str) -> Result<Option<(u16, u16)>, CliError> {
+    match options.iter().find(|opt| opt.name == name) {
+        Some(opt) => {
+            let (left, right) = opt
+                .value
+                .split_once(':')
+                .ok_or_else(|| CliError::InvalidOptionValue(name.to_string()))?;
+            let left = parse_hex_u16(left)
+                .ok_or_else(|| CliError::InvalidOptionValue(name.to_string()))?;
+            let right = parse_hex_u16(right)
+                .ok_or_else(|| CliError::InvalidOptionValue(name.to_string()))?;
+            Ok(Some((left, right)))
+        }
+        None => Ok(None),
+    }
 }
 
 fn parse_hex_option(options: &[Opt<'_>], name: &str) -> Result<Option<u16>, CliError> {
@@ -219,6 +262,100 @@ mod tests {
         assert!(matches!(
             parse(&args),
             Err(CliError::InvalidOptionValue(option)) if option == "max-alloc"
+        ));
+    }
+
+    #[test]
+    fn parse_stack_value() {
+        let args = [
+            "in.elf".to_string(),
+            "out.exe".to_string(),
+            "--stack".to_string(),
+            "0x10:0x20".to_string(),
+        ];
+        let params = parse(&args).unwrap();
+        assert_eq!(params.stack, Some((0x10, 0x20)));
+    }
+
+    #[test]
+    fn parse_returns_invalid_stack_value() {
+        let cases = [
+            vec![
+                "in.elf".to_string(),
+                "out.exe".to_string(),
+                "--stack".to_string(),
+                "0x10".to_string(),
+            ],
+            vec![
+                "in.elf".to_string(),
+                "out.exe".to_string(),
+                "--stack".to_string(),
+                "0x10:zzz".to_string(),
+            ],
+            vec![
+                "in.elf".to_string(),
+                "out.exe".to_string(),
+                "--stack".to_string(),
+                "zzz".to_string(),
+            ],
+        ];
+        for args in cases {
+            assert!(matches!(
+                parse(&args),
+                Err(CliError::InvalidOptionValue(option)) if option == "stack"
+            ));
+        }
+    }
+
+    #[test]
+    fn parse_strictness_value() {
+        let args = [
+            "in.elf".to_string(),
+            "out.exe".to_string(),
+            "--strictness".to_string(),
+            "Warn".to_string(),
+        ];
+        let params = parse(&args).unwrap();
+        assert_eq!(params.strictness, Some(Strictness::Warn));
+    }
+
+    #[test]
+    fn parse_returns_invalid_strictness_value() {
+        let args = [
+            "in.elf".to_string(),
+            "out.exe".to_string(),
+            "--strictness".to_string(),
+            "bogus".to_string(),
+        ];
+        assert!(matches!(
+            parse(&args),
+            Err(CliError::InvalidOptionValue(option)) if option == "strictness"
+        ));
+    }
+
+    #[test]
+    fn parse_entry_value() {
+        let args = [
+            "in.elf".to_string(),
+            "out.exe".to_string(),
+            "--entry".to_string(),
+            "1234:5678".to_string(),
+        ];
+        let params = parse(&args).unwrap();
+        assert_eq!(params.entry, Some((0x1234, 0x5678)));
+    }
+
+    #[test]
+    fn parse_returns_invalid_entry_value() {
+        let args = [
+            "in.elf".to_string(),
+            "out.exe".to_string(),
+            "--entry".to_string(),
+            "zzz".to_string(),
+        ];
+        assert!(matches!(
+            parse(&args),
+            Err(CliError::InvalidOptionValue(option)) if option == "entry"
         ));
     }
 
