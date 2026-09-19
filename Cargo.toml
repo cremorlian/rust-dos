@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["examples/hello"]
+members = ["cargo-dos"]
 
 [workspace.package]
 license = "MIT OR Apache-2.0"

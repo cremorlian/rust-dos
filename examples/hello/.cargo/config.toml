@@ -1,0 +1,9 @@
+[build]
+target = "../../cargo-dos/assets/i486-dos.json"
+
+[unstable]
+build-std = ["core"]
+json-target-spec = true
+
+[target.i486-dos]
+runner = ["../../target/debug/cargo-dos", "postlink"]

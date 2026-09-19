@@ -1,0 +1,10 @@
+[package]
+name = "cargo-dos"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "cargo-dos"
+path = "src/main.rs"
