@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = ["examples/hello"]
+
+[workspace.package]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/cremorlian/rust-dos"
