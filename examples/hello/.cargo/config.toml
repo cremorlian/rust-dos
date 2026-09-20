@@ -1,9 +1,13 @@
 [build]
-target = "../../cargo-dos/assets/i486-dos.json"
+target = "i486-dos"
+rustflags = ["-Zunstable-options"]
 
 [unstable]
 build-std = ["core"]
 json-target-spec = true
 
 [target.i486-dos]
-runner = ["../../target/debug/cargo-dos", "postlink"]
+runner = ["cargo-dos", "postlink"]
+
+[env]
+RUST_TARGET_PATH = "/home/Source/github/cremorlian/rust-dos/target/x86_64-unknown-linux-gnu/debug/cargo-home/rust-dos"
