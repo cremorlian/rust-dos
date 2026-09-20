@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
 
-use cargo_dos::{init, mz};
+use cargo_dos::{elf, init, mz, packer};
 
 fn main() {
     match env::args().nth(1).as_deref() {
@@ -26,16 +26,21 @@ fn main() {
     }
 }
 
-fn cmd_postlink() -> Result<(), std::io::Error> {
+fn cmd_postlink() -> Result<(), String> {
     let input = env::args().nth(2).ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "usage: cargo dos postlink <elf>",
-        )
+        "usage: cargo dos postlink <elf>".to_string()
     })?;
     let stem = Path::new(&input).file_stem().unwrap_or_default();
     let out = format!("{}.exe", stem.to_string_lossy());
-    fs::write(out, mz::header())
+    let exe = build_exe(&input)?;
+    fs::write(out, exe).map_err(|e| e.to_string())
+}
+
+fn build_exe(input: &str) -> Result<Vec<u8>, String> {
+    let bytes = fs::read(input).map_err(|e| e.to_string())?;
+    let image = elf::extract_image(&bytes).map_err(|e| format!("{e:?}"))?;
+    let header = mz::header(32 + image.len()).map_err(|e| format!("{e:?}"))?;
+    Ok(packer::compose(header, &image))
 }
 
 fn cmd_init() -> Result<(), std::io::Error> {

@@ -2,6 +2,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+mod common;
+
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 struct TempDir(PathBuf);
@@ -132,11 +134,11 @@ fn init_scaffolds_a_consumer_project() {
 }
 
 #[test]
-fn postlink_writes_output_starting_with_mz() {
+fn postlink_emits_exe_with_self_consistent_header_and_load_image() {
     let tmp = TempDir::new();
     let project = tmp.path().join("project");
     std::fs::create_dir_all(&project).unwrap();
-    std::fs::write(project.join("hello"), b"input content is ignored").unwrap();
+    std::fs::write(project.join("hello"), common::build_elf(&[vec![1, 2, 3, 4, 5, 6]])).unwrap();
 
     let out = run_dos(
         &["postlink", "hello"],
@@ -146,7 +148,21 @@ fn postlink_writes_output_starting_with_mz() {
 
     assert!(out.status.success());
     let bytes = std::fs::read(project.join("hello.exe")).unwrap();
+
     assert_eq!(&bytes[..2], b"MZ");
+
+    let file_len = bytes.len();
+    assert_eq!(
+        u16::from_le_bytes([bytes[2], bytes[3]]),
+        (file_len % 512).max(1) as u16,
+        "e_cblp"
+    );
+    assert_eq!(
+        u16::from_le_bytes([bytes[4], bytes[5]]),
+        file_len.div_ceil(512) as u16,
+        "e_cp"
+    );
+    assert_eq!(&bytes[32..], [1, 2, 3, 4, 5, 6]);
 }
 
 #[test]
@@ -161,4 +177,20 @@ fn postlink_without_input_arg_prints_usage_and_exits_one() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("usage"));
     assert!(!stderr.contains("thread 'main'"));
+}
+
+#[test]
+fn postlink_with_non_elf_input_exits_one_without_panicking() {
+    let tmp = TempDir::new();
+    let project = tmp.path().join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(project.join("hello"), b"definitely not an elf").unwrap();
+
+    let out = run_dos(&["postlink", "hello"], &project, &tmp.path().join("cargo-home"));
+
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("NotAnElf"));
+    assert!(!stderr.contains("thread 'main'"));
+    assert!(!project.join("hello.exe").exists());
 }

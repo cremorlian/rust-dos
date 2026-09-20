@@ -8,3 +8,9 @@ repository.workspace = true
 [[bin]]
 name = "cargo-dos"
 path = "src/main.rs"
+
+[dependencies]
+object = { version = "0.40", features = ["read", "elf"] }
+
+[dev-dependencies]
+object = { version = "0.40", features = ["build"] }
