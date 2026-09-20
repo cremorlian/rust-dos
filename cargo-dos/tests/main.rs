@@ -48,6 +48,14 @@ fn run_dos(args: &[&str], project: &Path, cargo_home: &Path) -> std::process::Ou
         .unwrap()
 }
 
+fn restore_writable(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = std::fs::metadata(path).unwrap().permissions().mode();
+    let mut writable = std::fs::metadata(path).unwrap().permissions();
+    writable.set_mode(mode | 0o200);
+    std::fs::set_permissions(path, writable).unwrap();
+}
+
 #[test]
 fn unknown_subcommand_prints_usage_and_exits_nonzero() {
     let tmp = TempDir::new();
@@ -101,9 +109,7 @@ fn io_error_surfaces_cleanly_and_exits_one() {
         .output()
         .unwrap();
 
-    let mut perms = std::fs::metadata(&target_dir).unwrap().permissions();
-    perms.set_readonly(false);
-    std::fs::set_permissions(&target_dir, perms).unwrap();
+    restore_writable(&target_dir);
 
     assert_eq!(out.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -123,4 +129,36 @@ fn init_scaffolds_a_consumer_project() {
     assert!(project.join(".cargo/config.toml").exists());
     assert!(project.join("rust-toolchain.toml").exists());
     assert!(cargo_home.join("rust-dos/i486-dos.json").exists());
+}
+
+#[test]
+fn postlink_writes_output_starting_with_mz() {
+    let tmp = TempDir::new();
+    let project = tmp.path().join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(project.join("hello"), b"input content is ignored").unwrap();
+
+    let out = run_dos(
+        &["postlink", "hello"],
+        &project,
+        &tmp.path().join("cargo-home"),
+    );
+
+    assert!(out.status.success());
+    let bytes = std::fs::read(project.join("hello.exe")).unwrap();
+    assert_eq!(&bytes[..2], b"MZ");
+}
+
+#[test]
+fn postlink_without_input_arg_prints_usage_and_exits_one() {
+    let tmp = TempDir::new();
+    let project = tmp.path().join("project");
+    std::fs::create_dir_all(&project).unwrap();
+
+    let out = run_dos(&["postlink"], &project, &tmp.path().join("cargo-home"));
+
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("usage"));
+    assert!(!stderr.contains("thread 'main'"));
 }
