@@ -1,4 +1,4 @@
-use object::{build, elf, Endianness};
+use object::{Endianness, build, elf};
 
 pub fn build_elf(segments: &[Vec<u8>]) -> Vec<u8> {
     let mut builder = build::elf::Builder::new(Endianness::Little, false);

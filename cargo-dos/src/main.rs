@@ -27,9 +27,9 @@ fn main() {
 }
 
 fn cmd_postlink() -> Result<(), String> {
-    let input = env::args().nth(2).ok_or_else(|| {
-        "usage: cargo dos postlink <elf>".to_string()
-    })?;
+    let input = env::args()
+        .nth(2)
+        .ok_or_else(|| "usage: cargo dos postlink <elf>".to_string())?;
     let stem = Path::new(&input).file_stem().unwrap_or_default();
     let out = format!("{}.exe", stem.to_string_lossy());
     let exe = build_exe(&input)?;

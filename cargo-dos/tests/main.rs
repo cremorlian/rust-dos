@@ -138,7 +138,11 @@ fn postlink_emits_exe_with_self_consistent_header_and_load_image() {
     let tmp = TempDir::new();
     let project = tmp.path().join("project");
     std::fs::create_dir_all(&project).unwrap();
-    std::fs::write(project.join("hello"), common::build_elf(&[vec![1, 2, 3, 4, 5, 6]])).unwrap();
+    std::fs::write(
+        project.join("hello"),
+        common::build_elf(&[vec![1, 2, 3, 4, 5, 6]]),
+    )
+    .unwrap();
 
     let out = run_dos(
         &["postlink", "hello"],
@@ -186,7 +190,11 @@ fn postlink_with_non_elf_input_exits_one_without_panicking() {
     std::fs::create_dir_all(&project).unwrap();
     std::fs::write(project.join("hello"), b"definitely not an elf").unwrap();
 
-    let out = run_dos(&["postlink", "hello"], &project, &tmp.path().join("cargo-home"));
+    let out = run_dos(
+        &["postlink", "hello"],
+        &project,
+        &tmp.path().join("cargo-home"),
+    );
 
     assert_eq!(out.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&out.stderr);
