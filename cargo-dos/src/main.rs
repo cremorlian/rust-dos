@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
 
-use cargo_dos::{elf, init, mz, packer};
+use cargo_dos::{elf, fixups, init, mz, packer};
 
 fn main() {
     match env::args().nth(1).as_deref() {
@@ -38,9 +38,11 @@ fn cmd_postlink() -> Result<(), String> {
 
 fn build_exe(input: &str) -> Result<Vec<u8>, String> {
     let bytes = fs::read(input).map_err(|e| e.to_string())?;
-    let image = elf::extract_image(&bytes).map_err(|e| format!("{e:?}"))?;
-    let header = mz::header(32 + image.len()).map_err(|e| format!("{e:?}"))?;
-    Ok(packer::compose(header, &image))
+    let data = elf::extract(&bytes).map_err(|e| format!("{e:?}"))?;
+    let table = fixups::table(&data.fixups).map_err(|e| format!("{e:?}"))?;
+    let file_len = 32 + data.image.len() + table.len();
+    let header = mz::header(file_len).map_err(|e| format!("{e:?}"))?;
+    Ok(packer::compose(header, &data.image, &table))
 }
 
 fn cmd_init() -> Result<(), std::io::Error> {

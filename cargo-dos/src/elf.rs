@@ -1,8 +1,24 @@
-pub fn extract_image(bytes: &[u8]) -> Result<Vec<u8>, Error> {
-    use object::Object;
-    use object::ObjectSegment;
+pub struct ElfData {
+    pub image: Vec<u8>,
+    pub fixups: Vec<u32>,
+}
 
-    let file = object::File::parse(bytes).map_err(|_| Error::NotAnElf)?;
+pub fn extract(bytes: &[u8]) -> Result<ElfData, Error> {
+    let object::File::Elf32(file) = object::File::parse(bytes).map_err(|_| Error::NotAnElf)? else {
+        return Err(Error::NotAnElf);
+    };
+    let image = extract_image(&file)?;
+    let fixups = collect_fixups(&file)?;
+    Ok(ElfData { image, fixups })
+}
+
+fn extract_image(file: &object::read::elf::ElfFile32<'_>) -> Result<Vec<u8>, Error> {
+    use object::{Object, ObjectSegment};
+
+    let image_size: u64 = file.segments().map(|s| s.file_range().1).sum();
+    if image_size > u64::from(u32::MAX) {
+        return Err(Error::ImageTooLarge { image_size });
+    }
 
     let mut image = Vec::new();
     let mut expected: Option<u64> = None;
@@ -25,17 +41,73 @@ pub fn extract_image(bytes: &[u8]) -> Result<Vec<u8>, Error> {
         image.extend_from_slice(data);
     }
 
-    if image.is_empty() {
-        return Err(Error::NoLoadableSegments);
+    Ok(image)
+}
+
+fn collect_fixups(file: &object::read::elf::ElfFile32<'_>) -> Result<Vec<u32>, Error> {
+    use object::{Object, ObjectSection, ObjectSegment};
+
+    let mut image_start = 0u64;
+    let mut spans: Vec<(u64, u64, u64)> = Vec::new();
+    for segment in file.segments() {
+        let filesz = segment.file_range().1;
+        spans.push((segment.address(), filesz, image_start));
+        image_start += filesz;
     }
 
-    Ok(image)
+    let mut fixups = Vec::new();
+    for section in file.sections() {
+        let is_reloc = matches!(
+            section.flags(),
+            object::SectionFlags::Elf { sh_type, .. }
+                if sh_type == object::elf::SHT_REL || sh_type == object::elf::SHT_RELA
+        );
+        if is_reloc {
+            continue;
+        }
+        for (r_offset, relocation) in section.relocations() {
+            let Some((address, _filesz, image_start)) = spans
+                .iter()
+                .copied()
+                .find(|&(address, filesz, _)| r_offset >= address && r_offset < address + filesz)
+            else {
+                continue;
+            };
+            let object::RelocationFlags::Elf { r_type } = relocation.flags() else {
+                unreachable!("non-ELF flags from an ELF32 file");
+            };
+            match r_type {
+                object::elf::R_386_32 => {
+                    fixups.push((image_start + (r_offset - address)) as u32);
+                }
+                object::elf::R_386_NONE
+                | object::elf::R_386_PC32
+                | object::elf::R_386_PLT32
+                | object::elf::R_386_PC16
+                | object::elf::R_386_PC8 => {}
+                _ => {
+                    return Err(Error::UnrepresentableRelocType {
+                        offset: r_offset,
+                        r_type: r_type.0,
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(fixups)
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Error {
     NotAnElf,
-    NoLoadableSegments,
+    UnrepresentableRelocType {
+        offset: u64,
+        r_type: u32,
+    },
+    ImageTooLarge {
+        image_size: u64,
+    },
     UnexpectedSegmentOffset {
         index: usize,
         expected_offset: u64,
@@ -46,36 +118,53 @@ pub enum Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use object::{Endianness, build, elf};
+    use crate::fixtures;
+    use object::elf;
 
     #[test]
-    fn extract_image_concatenates_load_segments_in_program_header_order() {
-        let elf = build_elf(&[vec![1, 2, 3, 4], vec![5, 6]]);
+    fn extract_concatenates_load_segments_in_program_header_order() {
+        let elf = fixtures::build_elf(&[(vec![1, 2, 3, 4], 0x400000), (vec![5, 6], 0x400000)], &[]);
 
-        let image = extract_image(&elf).expect("parse should succeed");
+        let data = extract(&elf).expect("parse should succeed");
 
-        assert_eq!(image, [1, 2, 3, 4, 5, 6]);
+        assert_eq!(data.image, [1, 2, 3, 4, 5, 6]);
     }
 
     #[test]
-    fn extract_image_rejects_segment_range_past_end_of_file() {
-        let mut elf = build_elf(&[vec![1, 2, 3, 4]]);
+    fn extract_rejects_segment_range_past_end_of_file() {
+        let mut elf = fixtures::build_elf(&[(vec![1, 2, 3, 4], 0x400000)], &[]);
         elf[0x34 + 16..0x34 + 16 + 4].copy_from_slice(&(u32::MAX - 1).to_le_bytes());
 
-        assert!(matches!(extract_image(&elf), Err(Error::NotAnElf)));
+        assert!(matches!(extract(&elf), Err(Error::NotAnElf)));
     }
 
     #[test]
-    fn extract_image_rejects_truncated_input() {
-        let elf = build_elf(&[vec![1, 2, 3, 4]]);
+    fn extract_rejects_image_larger_than_u32_max() {
+        let mut elf =
+            fixtures::build_elf(&[(vec![1, 2, 3, 4], 0x400000), (vec![5], 0x400004)], &[]);
+        elf[0x34 + 16..0x34 + 16 + 4].copy_from_slice(&0x8000_0000u32.to_le_bytes());
+        elf[0x54 + 16..0x54 + 16 + 4].copy_from_slice(&0x8000_0000u32.to_le_bytes());
+
+        assert!(matches!(
+            extract(&elf),
+            Err(Error::ImageTooLarge {
+                image_size: 0x1_0000_0000
+            })
+        ));
+    }
+
+    #[test]
+    fn extract_rejects_truncated_input() {
+        let elf = fixtures::build_elf(&[(vec![1, 2, 3, 4], 0x400000)], &[]);
         let truncated = &elf[..0x34 + 32 + 2];
 
-        assert!(matches!(extract_image(truncated), Err(Error::NotAnElf)));
+        assert!(matches!(extract(truncated), Err(Error::NotAnElf)));
     }
 
     #[test]
-    fn extract_image_rejects_gap_between_segments() {
-        let mut elf = build_elf(&[vec![1, 2, 3, 4], vec![5, 6]]);
+    fn extract_rejects_gap_between_segments() {
+        let mut elf =
+            fixtures::build_elf(&[(vec![1, 2, 3, 4], 0x400000), (vec![5, 6], 0x400000)], &[]);
 
         const PHDR_SIZE: usize = 32;
         const P_OFFSET_OFF: usize = 4;
@@ -84,7 +173,7 @@ mod tests {
             .copy_from_slice(&0x110u64.to_le_bytes());
 
         assert!(matches!(
-            extract_image(&elf),
+            extract(&elf),
             Err(Error::UnexpectedSegmentOffset {
                 index: 1,
                 expected_offset: 0x78,
@@ -94,8 +183,9 @@ mod tests {
     }
 
     #[test]
-    fn extract_image_rejects_overlapping_segments() {
-        let mut elf = build_elf(&[vec![1, 2, 3, 4], vec![5, 6]]);
+    fn extract_rejects_overlapping_segments() {
+        let mut elf =
+            fixtures::build_elf(&[(vec![1, 2, 3, 4], 0x400000), (vec![5, 6], 0x400000)], &[]);
 
         const PHDR_SIZE: usize = 32;
         const P_OFFSET_OFF: usize = 4;
@@ -104,7 +194,7 @@ mod tests {
             .copy_from_slice(&0x76u64.to_le_bytes());
 
         assert!(matches!(
-            extract_image(&elf),
+            extract(&elf),
             Err(Error::UnexpectedSegmentOffset {
                 index: 1,
                 expected_offset: 0x78,
@@ -114,8 +204,102 @@ mod tests {
     }
 
     #[test]
-    fn extract_image_rejects_segments_out_of_program_order() {
-        let mut elf = build_elf(&[vec![1, 2, 3, 4], vec![5, 6]]);
+    fn extract_builds_image_and_records_loaded_r386_32_offsets() {
+        let elf = fixtures::build_elf(
+            &[(vec![0xAA; 0x10001], 0x400000), (vec![0xBB; 8], 0x410001)],
+            &[
+                (
+                    0,
+                    &[
+                        (0x400000, elf::R_386_32),
+                        (0x400004, elf::R_386_32),
+                        (0x410000, elf::R_386_32),
+                    ],
+                ),
+                (1, &[(0x410001, elf::R_386_32), (0x410008, elf::R_386_32)]),
+            ],
+        );
+
+        let data = extract(&elf).expect("parse should succeed");
+
+        let image = [vec![0xAA; 0x10001], vec![0xBB; 8]].concat();
+        assert_eq!(data.image, image);
+        assert_eq!(data.fixups, [0, 4, 0x10000, 0x10001, 0x10008]);
+    }
+
+    #[test]
+    fn extract_ignores_r386_pc32_at_loaded_sites() {
+        let elf = fixtures::build_elf(
+            &[(vec![0xAA; 8], 0x400000)],
+            &[(0, &[(0x400000, elf::R_386_32), (0x400004, elf::R_386_PC32)])],
+        );
+
+        let data = extract(&elf).expect("parse should succeed");
+
+        assert_eq!(data.fixups, [0]);
+    }
+
+    #[test]
+    fn extract_ignores_known_pc_relative_reloc_types_at_loaded_sites() {
+        let elf = fixtures::build_elf(
+            &[(vec![0xAA; 0x14], 0x400000)],
+            &[(
+                0,
+                &[
+                    (0x400000, elf::R_386_NONE),
+                    (0x400004, elf::R_386_PC32),
+                    (0x400008, elf::R_386_PLT32),
+                    (0x40000c, elf::R_386_PC16),
+                    (0x400010, elf::R_386_PC8),
+                ],
+            )],
+        );
+
+        let data = extract(&elf).expect("parse should succeed");
+
+        assert_eq!(data.fixups, []);
+    }
+
+    #[test]
+    fn extract_rejects_unrepresentable_reloc_type_at_loaded_sites() {
+        let elf = fixtures::build_elf(
+            &[(vec![0xAA; 8], 0x400000)],
+            &[(0, &[(0x400000, elf::RelocationType(99))])],
+        );
+
+        assert!(matches!(
+            extract(&elf),
+            Err(Error::UnrepresentableRelocType {
+                offset: 0x400000,
+                r_type: 99
+            })
+        ));
+    }
+
+    #[test]
+    fn extract_records_only_relocs_within_load_segment_range() {
+        let elf = fixtures::build_elf(
+            &[(vec![0xAA; 8], 0x400000)],
+            &[(
+                0,
+                &[
+                    (0x3fffff, elf::R_386_32),
+                    (0x400000, elf::R_386_32),
+                    (0x400007, elf::R_386_32),
+                    (0x400008, elf::R_386_32),
+                ],
+            )],
+        );
+
+        let data = extract(&elf).expect("parse should succeed");
+
+        assert_eq!(data.fixups, [0, 7]);
+    }
+
+    #[test]
+    fn extract_rejects_segments_out_of_program_order() {
+        let mut elf =
+            fixtures::build_elf(&[(vec![1, 2, 3, 4], 0x400000), (vec![5, 6], 0x400000)], &[]);
 
         const P_OFFSET_OFF: usize = 4;
         let first_phdr = 0x34;
@@ -124,41 +308,12 @@ mod tests {
             .copy_from_slice(&0x100u64.to_le_bytes());
 
         assert!(matches!(
-            extract_image(&elf),
+            extract(&elf),
             Err(Error::UnexpectedSegmentOffset {
                 index: 1,
                 expected_offset: 0x104,
                 actual_offset: 0x78,
             })
         ));
-    }
-
-    fn build_elf(segments: &[Vec<u8>]) -> Vec<u8> {
-        let mut builder = build::elf::Builder::new(Endianness::Little, false);
-        builder.header.e_phoff = 0x34;
-
-        let shstrtab = builder.sections.add();
-        shstrtab.name = b".shstrtab"[..].into();
-        shstrtab.sh_type = elf::SHT_STRTAB;
-        shstrtab.data = build::elf::SectionData::SectionString;
-
-        let mut file_offset = 0x34 + segments.len() as u64 * 32;
-        for seg in segments.iter() {
-            let segment = builder.segments.add();
-            segment.p_type = elf::PT_LOAD;
-            segment.p_offset = file_offset;
-            segment.p_filesz = seg.len() as u64;
-
-            let section = builder.sections.add();
-            section.sh_addralign = 1;
-            section.data = build::elf::SectionData::Data(seg[..].into());
-
-            segment.sections.push(section.id());
-            file_offset += seg.len() as u64;
-        }
-
-        let mut buf = Vec::new();
-        builder.write(&mut buf).expect("write elf");
-        buf
     }
 }

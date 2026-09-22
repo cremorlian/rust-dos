@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-mod common;
+mod fixtures;
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -134,13 +134,23 @@ fn init_scaffolds_a_consumer_project() {
 }
 
 #[test]
-fn postlink_emits_exe_with_self_consistent_header_and_load_image() {
+fn postlink_emits_exe_with_fixup_table_tail_and_self_consistent_header() {
     let tmp = TempDir::new();
     let project = tmp.path().join("project");
     std::fs::create_dir_all(&project).unwrap();
     std::fs::write(
         project.join("hello"),
-        common::build_elf(&[vec![1, 2, 3, 4, 5, 6]]),
+        fixtures::build_elf(
+            &[(vec![1, 2, 3, 4, 5, 6], 0x400000)],
+            &[(
+                0,
+                &[
+                    (0x400000, object::elf::R_386_32),
+                    (0x400004, object::elf::R_386_PC32),
+                    (0x400005, object::elf::R_386_32),
+                ],
+            )],
+        ),
     )
     .unwrap();
 
@@ -166,7 +176,40 @@ fn postlink_emits_exe_with_self_consistent_header_and_load_image() {
         file_len.div_ceil(512) as u16,
         "e_cp"
     );
-    assert_eq!(&bytes[32..], [1, 2, 3, 4, 5, 6]);
+
+    const IMAGE_OFFSET: usize = 32;
+    let image_len = 6;
+    let table_offset = IMAGE_OFFSET + image_len;
+    assert_eq!(&bytes[IMAGE_OFFSET..table_offset], [1, 2, 3, 4, 5, 6]);
+
+    let mut entries = 0;
+    let mut cursor = table_offset;
+    loop {
+        let entry = u32::from_le_bytes([
+            bytes[cursor],
+            bytes[cursor + 1],
+            bytes[cursor + 2],
+            bytes[cursor + 3],
+        ]);
+        if entry == u32::MAX {
+            break;
+        }
+        entries += 1;
+        cursor += 4;
+    }
+
+    assert_eq!(entries, 2, "table holds one u32 per loaded R_386_32 site");
+    assert_eq!(
+        &bytes[table_offset..table_offset + 4],
+        0u32.to_le_bytes(),
+        "first entry is the affine image offset of the first R_386_32 site"
+    );
+    assert_eq!(
+        &bytes[table_offset + 4..table_offset + 8],
+        5u32.to_le_bytes(),
+        "second entry is the affine image offset of the second R_386_32 site"
+    );
+    assert_eq!(cursor + 4, file_len, "sentinel terminates the file");
 }
 
 #[test]
