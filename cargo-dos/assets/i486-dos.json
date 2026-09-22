@@ -7,6 +7,9 @@
   "function-sections": true,
   "linker": "rust-lld",
   "linker-flavor": "ld.lld",
+  "pre-link-args": {
+    "ld.lld": ["--emit-relocs", "--no-rosegment"]
+  },
   "llvm-target": "i486-unknown-none",
   "max-atomic-width": 32,
   "os": "none",

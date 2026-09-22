@@ -36,7 +36,7 @@ fn consumer_config(asset_dir: &Path) -> String {
     format!(
         "[build]
 target = \"i486-dos\"
-rustflags = [\"-Zunstable-options\"]
+rustflags = [\"-Zunstable-options\", \"-Cdebuginfo=0\"]
 
 [unstable]
 build-std = [\"core\"]

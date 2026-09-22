@@ -8,5 +8,8 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
-    loop {}
+    static GREETING: u32 = 0x1337;
+    loop {
+        core::hint::black_box(GREETING);
+    }
 }
