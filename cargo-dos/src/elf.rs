@@ -80,11 +80,7 @@ fn collect_fixups(file: &object::read::elf::ElfFile32<'_>) -> Result<Vec<u32>, E
                 object::elf::R_386_32 => {
                     fixups.push((image_start + (r_offset - address)) as u32);
                 }
-                object::elf::R_386_NONE
-                | object::elf::R_386_PC32
-                | object::elf::R_386_PLT32
-                | object::elf::R_386_PC16
-                | object::elf::R_386_PC8 => {}
+                object::elf::R_386_PC32 => {}
                 _ => {
                     return Err(Error::UnrepresentableRelocType {
                         offset: r_offset,
@@ -240,24 +236,24 @@ mod tests {
     }
 
     #[test]
-    fn extract_ignores_known_pc_relative_reloc_types_at_loaded_sites() {
-        let elf = fixtures::build_elf(
-            &[(vec![0xAA; 0x14], 0x400000)],
-            &[(
-                0,
-                &[
-                    (0x400000, elf::R_386_NONE),
-                    (0x400004, elf::R_386_PC32),
-                    (0x400008, elf::R_386_PLT32),
-                    (0x40000c, elf::R_386_PC16),
-                    (0x400010, elf::R_386_PC8),
-                ],
-            )],
-        );
+    fn extract_rejects_known_but_unrepresentable_reloc_types_at_loaded_sites() {
+        for (r_type, expected) in [
+            (elf::R_386_NONE, 0),
+            (elf::R_386_PLT32, elf::R_386_PLT32.0),
+            (elf::R_386_PC16, elf::R_386_PC16.0),
+            (elf::R_386_PC8, elf::R_386_PC8.0),
+        ] {
+            let elf =
+                fixtures::build_elf(&[(vec![0xAA; 8], 0x400000)], &[(0, &[(0x400000, r_type)])]);
 
-        let data = extract(&elf).expect("parse should succeed");
-
-        assert_eq!(data.fixups, []);
+            assert!(matches!(
+                extract(&elf),
+                Err(Error::UnrepresentableRelocType {
+                    offset: 0x400000,
+                    r_type
+                }) if r_type == expected
+            ));
+        }
     }
 
     #[test]
