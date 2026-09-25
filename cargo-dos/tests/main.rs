@@ -194,6 +194,10 @@ fn postlink_emits_exe_with_fixup_table_tail_and_self_consistent_header() {
         if entry == u32::MAX {
             break;
         }
+        assert!(
+            entry < image_len as u32,
+            "every entry lands inside the emitted image"
+        );
         entries += 1;
         cursor += 4;
     }
