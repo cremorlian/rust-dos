@@ -20,6 +20,7 @@ E_ENTRY, E_PHOFF, E_SHOFF = 0x18, 0x1C, 0x20
 E_PHENTSIZE, E_PHNUM = 0x2A, 0x2C
 E_SHENTSIZE, E_SHNUM, E_SHSTRNDX = 0x2E, 0x30, 0x32
 E_CPARHDR = 8
+FIXUP_SENTINEL = 0xFFFFFFFF
 
 
 def u16(data, at):
@@ -88,6 +89,17 @@ def section_offset(data, wanted):
     raise SystemExit(f"section {wanted!r} not found")
 
 
+def fixup_offsets(exe, image_at, p_filesz):
+    table = exe[image_at + p_filesz :]
+    offsets = []
+    for i in range(0, len(table), 4):
+        v = u32(table, i)
+        if v == FIXUP_SENTINEL:
+            break
+        offsets.append(v)
+    return offsets
+
+
 def check():
     data = ELF.read_bytes()
     p_offset, p_vaddr, p_filesz = load_segment(data)
@@ -125,10 +137,23 @@ def check():
             f"but .text starts with {data[text_at:text_at + 4].hex(' ')}"
         )
 
+    rodata_at = section_offset(data, b".rodata")
+    rodata_image_rel = rodata_at - p_offset
+    sites = fixup_offsets(exe, image_at, p_filesz)
+    for site in sites:
+        baked = u32(image, site)
+        if baked != rodata_image_rel:
+            failures.append(
+                f"fixup site at image+0x{site:x} holds 0x{baked:x}, "
+                f"expected 0x{rodata_image_rel:x} (.rodata's image-relative offset)"
+            )
+
     print(f"e_cparhdr        : {u16(exe, E_CPARHDR)} paragraphs -> image at {image_at}")
     print(f"PT_LOAD          : p_offset 0x{p_offset:x}  p_vaddr 0x{p_vaddr:x}  p_filesz 0x{p_filesz:x}")
     print(f"e_entry          : 0x{e_entry:x}")
     print(f".text file offset: 0x{text_at:x}")
+    print(f".rodata image-relative: 0x{rodata_image_rel:x}")
+    print(f"fixup sites: {[hex(s) for s in sites]}")
     print(f"image[0:4]       : {image[:4].hex(' ')}")
     print(f".text[0:4]       : {data[text_at:text_at + 4].hex(' ')}")
 
