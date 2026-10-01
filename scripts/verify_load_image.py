@@ -1,3 +1,14 @@
+"""Verify the load image starts at the program's own bytes, not the ELF headers.
+
+Re-stamps the spec, runs a real cargo run, checks the linked ELF and hello.exe.
+
+p_vaddr, e_entry, and the fixup site move together when the base changes, so
+they cannot be falsified independently in a single-section example.
+
+cargo rustc rebuilds the ELF without writing a new hello.exe, so the EXE is
+stale after a cargo rustc run.
+"""
+
 import os
 import pathlib
 import re
