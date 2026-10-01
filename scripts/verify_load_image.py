@@ -16,7 +16,7 @@ PT_LOAD = 1
 P_TYPE, P_OFFSET, P_VADDR, P_FILESZ = 0, 4, 8, 16
 SHT_STRTAB = 3
 SH_NAME, SH_TYPE, SH_OFFSET = 0, 4, 16
-E_PHOFF, E_SHOFF = 0x1C, 0x20
+E_ENTRY, E_PHOFF, E_SHOFF = 0x18, 0x1C, 0x20
 E_PHENTSIZE, E_PHNUM = 0x2A, 0x2C
 E_SHENTSIZE, E_SHNUM, E_SHSTRNDX = 0x2E, 0x30, 0x32
 E_CPARHDR = 8
@@ -114,6 +114,11 @@ def check():
         failures.append("load image starts with the ELF header")
     if image[:4] == struct.pack("<I", PT_LOAD):
         failures.append("load image starts with a program-header row")
+    if p_vaddr != 0:
+        failures.append(f"p_vaddr is 0x{p_vaddr:x}, expected 0 (the image must start at address 0)")
+    e_entry = u32(data, E_ENTRY)
+    if e_entry != 0:
+        failures.append(f"e_entry is 0x{e_entry:x}, expected 0 (the stub must be the image's first address)")
     if image[:4] != data[text_at : text_at + 4]:
         failures.append(
             f"load image starts with {image[:4].hex(' ')}, "
@@ -122,6 +127,7 @@ def check():
 
     print(f"e_cparhdr        : {u16(exe, E_CPARHDR)} paragraphs -> image at {image_at}")
     print(f"PT_LOAD          : p_offset 0x{p_offset:x}  p_vaddr 0x{p_vaddr:x}  p_filesz 0x{p_filesz:x}")
+    print(f"e_entry          : 0x{e_entry:x}")
     print(f".text file offset: 0x{text_at:x}")
     print(f"image[0:4]       : {image[:4].hex(' ')}")
     print(f".text[0:4]       : {data[text_at:text_at + 4].hex(' ')}")
