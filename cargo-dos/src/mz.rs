@@ -1,4 +1,7 @@
-pub fn header(file_len: usize) -> Result<[u8; 32], Error> {
+pub(crate) const HEADER_BYTES: usize = 32;
+const PARAGRAPH_BYTES: usize = 16;
+
+pub fn header(file_len: usize) -> Result<[u8; HEADER_BYTES], Error> {
     if file_len == 0 {
         return Err(Error::FileLengthIsZero);
     }
@@ -6,7 +9,7 @@ pub fn header(file_len: usize) -> Result<[u8; 32], Error> {
         return Err(Error::FileLengthTooLarge);
     }
 
-    let mut out = [0u8; 32];
+    let mut out = [0u8; HEADER_BYTES];
 
     const MZ_MAGIC: [u8; 2] = *b"MZ";
     out[..2].copy_from_slice(&MZ_MAGIC);
@@ -18,9 +21,9 @@ pub fn header(file_len: usize) -> Result<[u8; 32], Error> {
     const PAGE_COUNT: usize = 4;
     out[PAGE_COUNT..PAGE_COUNT + 2].copy_from_slice(&page_count(file_len).to_le_bytes());
 
-    const HEADER_PARAGRAPHS: usize = 8;
-    const TWO_PARAGRAPHS: u16 = 2;
-    out[HEADER_PARAGRAPHS..HEADER_PARAGRAPHS + 2].copy_from_slice(&TWO_PARAGRAPHS.to_le_bytes());
+    const E_CPARHDR: usize = 8;
+    let header_paragraphs = (HEADER_BYTES / PARAGRAPH_BYTES) as u16;
+    out[E_CPARHDR..E_CPARHDR + 2].copy_from_slice(&header_paragraphs.to_le_bytes());
 
     Ok(out)
 }
@@ -49,20 +52,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn header_is_32_bytes_starting_with_mz() {
+    fn header_starts_with_mz() {
         let out = header(32).unwrap();
-        assert_eq!(out.len(), 32);
         assert_eq!(&out[..2], b"MZ");
     }
 
     #[test]
-    fn header_claims_two_paragraph_header_with_no_reloc_table_and_no_overlay() {
+    fn header_claims_no_reloc_table_and_no_overlay() {
         let out = header(32).unwrap();
 
         assert_eq!(u16::from_le_bytes([out[6], out[7]]), 0, "e_crlc");
-        assert_eq!(u16::from_le_bytes([out[8], out[9]]), 2, "e_cparhdr");
         assert_eq!(u16::from_le_bytes([out[24], out[25]]), 0, "e_lfarlc");
         assert_eq!(u16::from_le_bytes([out[26], out[27]]), 0, "e_ovno");
+    }
+
+    #[test]
+    fn header_paragraph_count_tracks_the_header_length() {
+        let out = header(4096).unwrap();
+
+        assert_eq!(
+            u16::from_le_bytes([out[8], out[9]]),
+            out.len().div_ceil(PARAGRAPH_BYTES) as u16,
+            "e_cparhdr"
+        );
     }
 
     #[test]
