@@ -176,8 +176,9 @@ fn postlink_emits_stub_then_image_then_fixup_table_with_self_consistent_header()
         file_len.div_ceil(512) as u16,
         "e_cp"
     );
-    assert_eq!(u16::from_le_bytes([bytes[20], bytes[21]]), 0, "e_ip");
     assert_eq!(u16::from_le_bytes([bytes[16], bytes[17]]), 0, "e_sp");
+    assert_eq!(u16::from_le_bytes([bytes[20], bytes[21]]), 0, "e_ip");
+    assert_eq!(u16::from_le_bytes([bytes[22], bytes[23]]), 0, "e_cs");
 
     const HEADER_LEN: usize = 32;
     const STUB_LEN: usize = 64;
