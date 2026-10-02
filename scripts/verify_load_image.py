@@ -31,6 +31,7 @@ E_ENTRY, E_PHOFF, E_SHOFF = 0x18, 0x1C, 0x20
 E_PHENTSIZE, E_PHNUM = 0x2A, 0x2C
 E_SHENTSIZE, E_SHNUM, E_SHSTRNDX = 0x2E, 0x30, 0x32
 E_CPARHDR = 8
+STUB_LEN = 64
 FIXUP_SENTINEL = 0xFFFFFFFF
 
 
@@ -119,7 +120,7 @@ def check():
 
     if exe[:2] != b"MZ":
         raise SystemExit(f"{EXE} does not start with MZ")
-    image_at = u16(exe, E_CPARHDR) * 16
+    image_at = u16(exe, E_CPARHDR) * 16 + STUB_LEN
     image = exe[image_at : image_at + p_filesz]
     if len(image) != p_filesz:
         raise SystemExit(
@@ -159,7 +160,10 @@ def check():
                 f"expected 0x{rodata_image_rel:x} (.rodata's image-relative offset)"
             )
 
-    print(f"e_cparhdr        : {u16(exe, E_CPARHDR)} paragraphs -> image at {image_at}")
+    print(
+        f"e_cparhdr        : {u16(exe, E_CPARHDR)} paragraphs -> module at "
+        f"{u16(exe, E_CPARHDR) * 16}, stub {STUB_LEN} bytes, image at {image_at}"
+    )
     print(f"PT_LOAD          : p_offset 0x{p_offset:x}  p_vaddr 0x{p_vaddr:x}  p_filesz 0x{p_filesz:x}")
     print(f"e_entry          : 0x{e_entry:x}")
     print(f".text file offset: 0x{text_at:x}")

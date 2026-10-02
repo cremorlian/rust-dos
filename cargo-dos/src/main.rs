@@ -27,22 +27,23 @@ fn main() {
 }
 
 fn cmd_postlink() -> Result<(), String> {
+    const STUB: [u8; 64] = [0; 64];
     let input = env::args()
         .nth(2)
         .ok_or_else(|| "usage: cargo dos postlink <elf>".to_string())?;
     let stem = Path::new(&input).file_stem().unwrap_or_default();
     let out = format!("{}.exe", stem.to_string_lossy());
-    let exe = build_exe(&input)?;
+    let exe = build_exe(&input, &STUB)?;
     fs::write(out, exe).map_err(|e| e.to_string())
 }
 
-fn build_exe(input: &str) -> Result<Vec<u8>, String> {
+fn build_exe(input: &str, stub: &[u8]) -> Result<Vec<u8>, String> {
     let bytes = fs::read(input).map_err(|e| e.to_string())?;
     let data = elf::extract(&bytes).map_err(|e| format!("{e:?}"))?;
     let table = fixups::table(&data.fixups).map_err(|e| format!("{e:?}"))?;
-    let file_len = 32 + data.image.len() + table.len();
+    let file_len = 32 + stub.len() + data.image.len() + table.len();
     let header = mz::header(file_len).map_err(|e| format!("{e:?}"))?;
-    Ok(packer::compose(header, &data.image, &table))
+    Ok(packer::compose(header, stub, &data.image, &table))
 }
 
 fn cmd_init() -> Result<(), std::io::Error> {

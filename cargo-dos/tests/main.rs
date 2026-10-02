@@ -134,7 +134,7 @@ fn init_scaffolds_a_consumer_project() {
 }
 
 #[test]
-fn postlink_emits_exe_with_fixup_table_tail_and_self_consistent_header() {
+fn postlink_emits_stub_then_image_then_fixup_table_with_self_consistent_header() {
     let tmp = TempDir::new();
     let project = tmp.path().join("project");
     std::fs::create_dir_all(&project).unwrap();
@@ -177,10 +177,23 @@ fn postlink_emits_exe_with_fixup_table_tail_and_self_consistent_header() {
         "e_cp"
     );
 
-    const IMAGE_OFFSET: usize = 32;
-    let image_len = 6;
-    let table_offset = IMAGE_OFFSET + image_len;
-    assert_eq!(&bytes[IMAGE_OFFSET..table_offset], [1, 2, 3, 4, 5, 6]);
+    const HEADER_LEN: usize = 32;
+    const STUB_LEN: usize = 64;
+    const IMAGE_LEN: usize = 6;
+
+    let image_offset = HEADER_LEN + STUB_LEN;
+    let table_offset = image_offset + IMAGE_LEN;
+
+    assert_eq!(
+        &bytes[HEADER_LEN..image_offset],
+        [0u8; STUB_LEN],
+        "the stub sits between the header and the image"
+    );
+    assert_eq!(
+        &bytes[image_offset..table_offset],
+        [1, 2, 3, 4, 5, 6],
+        "the image follows the stub"
+    );
 
     let mut entries = 0;
     let mut cursor = table_offset;
@@ -195,7 +208,7 @@ fn postlink_emits_exe_with_fixup_table_tail_and_self_consistent_header() {
             break;
         }
         assert!(
-            entry < image_len as u32,
+            entry < IMAGE_LEN as u32,
             "every entry lands inside the emitted image"
         );
         entries += 1;
