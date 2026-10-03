@@ -180,6 +180,30 @@ fn postlink_emits_stub_then_image_then_fixup_table_with_self_consistent_header()
     assert_eq!(u16::from_le_bytes([bytes[20], bytes[21]]), 0, "e_ip");
     assert_eq!(u16::from_le_bytes([bytes[22], bytes[23]]), 0, "e_cs");
 
+    const STUB_FRAME_PARAGRAPHS: u16 = 32;
+    let e_minalloc = u16::from_le_bytes([bytes[10], bytes[11]]);
+    assert_eq!(
+        e_minalloc, STUB_FRAME_PARAGRAPHS,
+        "e_minalloc reserves the stub's real-mode frame"
+    );
+    assert_eq!(
+        u16::from_le_bytes([bytes[12], bytes[13]]),
+        e_minalloc,
+        "e_maxalloc equals e_minalloc"
+    );
+    assert_eq!(
+        u16::from_le_bytes([bytes[14], bytes[15]]),
+        (file_len - 32).div_ceil(16) as u16 + STUB_FRAME_PARAGRAPHS,
+        "e_ss is the load module's paragraphs plus e_minalloc"
+    );
+    let e_ss = u16::from_le_bytes([bytes[14], bytes[15]]) as usize;
+    let load_module = (file_len - 32).div_ceil(16);
+    assert_eq!(
+        e_ss,
+        load_module + e_minalloc as usize,
+        "stack starts exactly at the top of the reservation"
+    );
+
     const HEADER_LEN: usize = 32;
     const STUB_LEN: usize = 64;
     const IMAGE_LEN: usize = 6;
