@@ -35,3 +35,9 @@ jobs:
 
       - name: Test
         run: cargo test --workspace
+
+      - name: Build cargo-dos for e2e
+        run: cargo build -p cargo-dos
+
+      - name: Run load-image e2e
+        run: python3 scripts/verify_load_image.py
