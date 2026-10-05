@@ -41,3 +41,5 @@ jobs:
 
       - name: Run load-image e2e
         run: python3 scripts/verify_load_image.py
+        env:
+          CARGO_HOME: ${{ github.workspace }}/target/ci-cargo-home
