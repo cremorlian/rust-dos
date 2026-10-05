@@ -43,3 +43,5 @@ jobs:
         run: python3 scripts/verify_load_image.py
         env:
           CARGO_HOME: ${{ github.workspace }}/target/ci-cargo-home
+          RUSTUP_TOOLCHAIN: nightly-2026-08-08
+          RUSTFLAGS: -Zunstable-options
