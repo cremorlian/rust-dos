@@ -44,6 +44,9 @@ def u32(data, at):
 
 
 def consumer_cargo_home():
+    home = os.environ.get("CARGO_HOME")
+    if home:
+        return pathlib.Path(home)
     text = CONSUMER_CONFIG.read_text()
     match = re.search(r'^RUST_TARGET_PATH\s*=\s*"([^"]+)"', text, re.MULTILINE)
     if match is None:
