@@ -44,4 +44,3 @@ jobs:
         env:
           CARGO_HOME: ${{ github.workspace }}/target/ci-cargo-home
           RUSTUP_TOOLCHAIN: nightly-2026-08-08
-          RUSTFLAGS: -Zunstable-options
