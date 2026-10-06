@@ -26,6 +26,7 @@ jobs:
         with:
           toolchain: nightly-2026-08-08
           components: rustfmt, clippy, rust-src
+          rustflags: ""
 
       - name: Format
         run: cargo fmt --all -- --check
