@@ -5,7 +5,7 @@
   "dynamic-linking": false,
   "executables": true,
   "function-sections": true,
-  "link-script": "ENTRY(_start)\n\nPHDRS\n{\n  text PT_LOAD FLAGS(7);\n}\n\nSECTIONS\n{\n  . = 0;\n\n  .text : { *(.text .text.*) } :text\n  .rodata : { *(.rodata .rodata.*) } :text\n\n  /DISCARD/ : { *(.eh_frame) *(.eh_frame_hdr) }\n}\n",
+  "link-script": "ENTRY(_start)\n\nPHDRS\n{\n  text PT_LOAD FLAGS(7);\n}\n\nSECTIONS\n{\n  . = 0;\n\n  .text : { *(.text._start*) *(.text .text.*) } :text\n  .rodata : { *(.rodata .rodata.*) } :text\n\n  /DISCARD/ : { *(.eh_frame) *(.eh_frame_hdr) }\n}\n",
   "linker": "rust-lld",
   "linker-flavor": "ld.lld",
   "pre-link-args": {
