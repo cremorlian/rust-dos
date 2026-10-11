@@ -180,7 +180,7 @@ fn postlink_emits_stub_then_image_then_fixup_table_with_self_consistent_header()
     assert_eq!(u16::from_le_bytes([bytes[20], bytes[21]]), 0, "e_ip");
     assert_eq!(u16::from_le_bytes([bytes[22], bytes[23]]), 0, "e_cs");
 
-    const STUB_FRAME_PARAGRAPHS: u16 = 32;
+    const STUB_FRAME_PARAGRAPHS: u16 = 4096;
     let e_minalloc = u16::from_le_bytes([bytes[10], bytes[11]]);
     assert_eq!(
         e_minalloc, STUB_FRAME_PARAGRAPHS,

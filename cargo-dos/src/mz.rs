@@ -22,7 +22,7 @@ pub fn header(file_len: usize) -> Result<[u8; HEADER_BYTES], Error> {
     let header_paragraphs = (HEADER_BYTES / PARAGRAPH_BYTES) as u16;
     out[E_CPARHDR..E_CPARHDR + 2].copy_from_slice(&header_paragraphs.to_le_bytes());
 
-    const STUB_FRAME_PARAGRAPHS: u16 = 32;
+    const STUB_FRAME_PARAGRAPHS: u16 = 4096;
     let reservation = STUB_FRAME_PARAGRAPHS.to_le_bytes();
 
     const E_MINALLOC: usize = 10;
@@ -67,15 +67,20 @@ fn page_count(file_len: usize) -> u16 {
 mod tests {
     use super::*;
 
+    const STUB_FRAME_PARAGRAPHS: u16 = 4096;
+    const TYPICAL_FILE_LEN: usize = 4112;
+    const LARGEST_ACCEPTED_FILE_LEN: usize =
+        (u16::MAX as usize - STUB_FRAME_PARAGRAPHS as usize) * PARAGRAPH_BYTES + HEADER_BYTES;
+
     #[test]
     fn header_starts_with_mz() {
-        let out = header(32).unwrap();
+        let out = header(HEADER_BYTES).unwrap();
         assert_eq!(&out[..2], b"MZ");
     }
 
     #[test]
     fn header_claims_no_reloc_table_and_no_overlay() {
-        let out = header(32).unwrap();
+        let out = header(HEADER_BYTES).unwrap();
 
         assert_eq!(u16::from_le_bytes([out[6], out[7]]), 0, "e_crlc");
         assert_eq!(u16::from_le_bytes([out[24], out[25]]), 0, "e_lfarlc");
@@ -94,14 +99,18 @@ mod tests {
     }
 
     #[test]
-    fn e_minalloc_reserves_a_stub_frame() {
-        let out = header(4112).unwrap();
-        assert_eq!(u16::from_le_bytes([out[10], out[11]]), 32, "e_minalloc");
+    fn e_minalloc_reserves_the_stub_frame() {
+        let out = header(TYPICAL_FILE_LEN).unwrap();
+        assert_eq!(
+            u16::from_le_bytes([out[10], out[11]]),
+            STUB_FRAME_PARAGRAPHS,
+            "e_minalloc"
+        );
     }
 
     #[test]
     fn e_maxalloc_matches_e_minalloc() {
-        let out = header(4112).unwrap();
+        let out = header(TYPICAL_FILE_LEN).unwrap();
         assert_eq!(
             u16::from_le_bytes([out[12], out[13]]),
             u16::from_le_bytes([out[10], out[11]]),
@@ -114,13 +123,25 @@ mod tests {
         let cases = [
             (
                 1,
-                32,
+                STUB_FRAME_PARAGRAPHS,
                 "shorter than the header, so the load module is empty",
             ),
-            (32, 32, "exactly the header"),
-            (48, 33, "one whole paragraph of load module"),
-            (4112, 287, "typical value"),
-            (1_048_080, 65_535, "largest accepted, where e_ss runs out"),
+            (HEADER_BYTES, STUB_FRAME_PARAGRAPHS, "exactly the header"),
+            (
+                48,
+                STUB_FRAME_PARAGRAPHS + 1,
+                "one whole paragraph of load module",
+            ),
+            (
+                TYPICAL_FILE_LEN,
+                STUB_FRAME_PARAGRAPHS + 255,
+                "typical value",
+            ),
+            (
+                LARGEST_ACCEPTED_FILE_LEN,
+                u16::MAX,
+                "largest accepted, where e_ss runs out",
+            ),
         ];
         for (file_len, e_ss, desc) in cases {
             let out = header(file_len).unwrap();
@@ -134,8 +155,8 @@ mod tests {
 
     #[test]
     fn e_ss_lands_exactly_at_the_top_of_the_reservation() {
-        let out = header(4112).unwrap();
-        let load_module = (4112 - HEADER_BYTES).div_ceil(PARAGRAPH_BYTES);
+        let out = header(TYPICAL_FILE_LEN).unwrap();
+        let load_module = (TYPICAL_FILE_LEN - HEADER_BYTES).div_ceil(PARAGRAPH_BYTES);
         let e_minalloc = u16::from_le_bytes([out[10], out[11]]) as usize;
         let e_ss = u16::from_le_bytes([out[14], out[15]]) as usize;
         assert_eq!(e_ss, load_module + e_minalloc, "typical file");
@@ -143,7 +164,7 @@ mod tests {
 
     #[test]
     fn e_ss_exactly_fills_its_field_at_the_largest_accepted_file() {
-        let out = header(1_048_080).unwrap();
+        let out = header(LARGEST_ACCEPTED_FILE_LEN).unwrap();
         let e_ss = u16::from_le_bytes([out[14], out[15]]) as usize;
         assert_eq!(e_ss, u16::MAX as usize, "no slack left in e_ss");
     }
@@ -155,18 +176,21 @@ mod tests {
 
     #[test]
     fn header_rejects_length_too_large_to_describe() {
-        assert!(matches!(header(1_048_081), Err(Error::FileLengthTooLarge)));
+        assert!(matches!(
+            header(LARGEST_ACCEPTED_FILE_LEN + 1),
+            Err(Error::FileLengthTooLarge)
+        ));
     }
 
     #[test]
     fn header_page_fields_account_for_the_file_length() {
         let cases = [
             (1, 1, 1, "lowest boundary"),
-            (32 + 0x1000, 32, 9, "typical value"),
+            (HEADER_BYTES + 0x1000, 32, 9, "typical value"),
             (
-                1_048_080,
+                LARGEST_ACCEPTED_FILE_LEN,
                 16,
-                2048,
+                1921,
                 "highest boundary, set by e_ss rather than e_cp",
             ),
         ];
