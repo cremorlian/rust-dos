@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
 
-use cargo_dos::{elf, fixups, init, mz, packer};
+use cargo_dos::{elf, fixups, init, mz, packer, stub};
 
 fn main() {
     match env::args().nth(1).as_deref() {
@@ -27,13 +27,12 @@ fn main() {
 }
 
 fn cmd_postlink() -> Result<(), String> {
-    const STUB: [u8; 64] = [0; 64];
     let input = env::args()
         .nth(2)
         .ok_or_else(|| "usage: cargo dos postlink <elf>".to_string())?;
     let stem = Path::new(&input).file_stem().unwrap_or_default();
     let out = format!("{}.exe", stem.to_string_lossy());
-    let exe = build_exe(&input, &STUB)?;
+    let exe = build_exe(&input, &stub::build()?)?;
     fs::write(out, exe).map_err(|e| e.to_string())
 }
 
