@@ -178,8 +178,9 @@ if __name__ == "__main__":
 
     build()
 
-    with tempfile.TemporaryDirectory(prefix="rust-dos-lane-") as work:
-        mount = pathlib.Path(work)
-        shutil.copy(cwsdpmi(mount), mount / "CWSDPMI.EXE")
-        shutil.copy(EXE, mount / "HELLO.EXE")
-        sys.exit(check(capture(mount, free_port())))
+    work = REPO / "target/com1-marker"
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True)
+    shutil.copy(cwsdpmi(work), work / "CWSDPMI.EXE")
+    shutil.copy(EXE, work / "HELLO.EXE")
+    sys.exit(check(capture(work, free_port())))
