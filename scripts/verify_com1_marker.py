@@ -112,6 +112,8 @@ def capture(mount, port):
         f"serial1=nullmodem server:127.0.0.1 port:{port}",
         "--set",
         "core=dynamic",
+        "--set",
+        "mouse mouse_capture=nomouse",
         "-c",
         f"mount c {mount}",
         "-c",
@@ -125,7 +127,6 @@ def capture(mount, port):
     env = dict(os.environ)
     env.setdefault("SDL_VIDEODRIVER", "offscreen")
     env.setdefault("SDL_AUDIODRIVER", "dummy")
-    env.setdefault("SDL_MOUSE_RELATIVE_MODE_WARP", "1")
     proc = subprocess.Popen(command, env=env, stdout=log, stderr=subprocess.STDOUT)
 
     server.settimeout(CONNECT_TIMEOUT)
