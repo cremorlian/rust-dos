@@ -157,7 +157,11 @@ def capture(mount, port):
         proc.kill()
     log.close()
 
-    print(f"dosbox log: {log.name}")
+    output = pathlib.Path(log.name).read_text(errors="replace")
+    pathlib.Path(log.name).unlink()
+    if output.strip():
+        print("dosbox output:")
+        print(output.rstrip())
     return captured
 
 
