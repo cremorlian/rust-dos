@@ -122,7 +122,10 @@ def capture(mount, port):
         "hello",
     ]
     log = tempfile.NamedTemporaryFile(prefix="dosbox-", suffix=".log", delete=False)
-    env = dict(os.environ, SDL_VIDEODRIVER="offscreen", SDL_AUDIODRIVER="dummy")
+    env = dict(os.environ)
+    env.setdefault("SDL_VIDEODRIVER", "offscreen")
+    env.setdefault("SDL_AUDIODRIVER", "dummy")
+    env.setdefault("SDL_MOUSE_RELATIVE_MODE_WARP", "1")
     proc = subprocess.Popen(command, env=env, stdout=log, stderr=subprocess.STDOUT)
 
     server.settimeout(CONNECT_TIMEOUT)
