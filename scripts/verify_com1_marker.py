@@ -34,6 +34,9 @@ CWSDPMI_MEMBER = "BIN/CWSDPMI.EXE"
 
 MARKER = b"stub rm\r\n"
 HANDSHAKE = b"\xff\x00"
+DOSBOX = next(
+    (name for name in ("dosbox", "dosbox-staging") if shutil.which(name)), None
+)
 CONNECT_TIMEOUT = 30.0
 READ_TIMEOUT = 2.0
 RUN_TIMEOUT = 30.0
@@ -102,7 +105,7 @@ def capture(mount, port):
     server.listen(1)
 
     command = [
-        "dosbox",
+        DOSBOX,
         "--noprimaryconf",
         "--nolocalconf",
         "--set",
@@ -172,9 +175,10 @@ def check(captured):
 
 
 if __name__ == "__main__":
-    for tool in ("dosbox", "cargo"):
-        if shutil.which(tool) is None:
-            raise SystemExit(f"{tool} not found on PATH")
+    if DOSBOX is None:
+        raise SystemExit("dosbox or dosbox-staging not found on PATH")
+    if shutil.which("cargo") is None:
+        raise SystemExit("cargo not found on PATH")
 
     build()
 

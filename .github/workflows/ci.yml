@@ -26,8 +26,8 @@ jobs:
 
       - name: Install dosbox-staging
         run: |
-          sudo snap install --classic --channel=latest/stable --revision=138 dosbox-staging
-          dosbox --version
+          sudo snap install --channel=latest/stable --revision=138 dosbox-staging
+          dosbox-staging --version
 
       - name: Setup Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@1fbea72663f6d4c03efaab13560c8a24cfd2a7cc # v1.9.0
