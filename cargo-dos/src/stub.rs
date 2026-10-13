@@ -1,5 +1,5 @@
 pub fn build() -> Result<Vec<u8>, String> {
-    const REGION_LEN: usize = 64;
+    const REGION_LEN: usize = 256;
     let stub: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stub.bin"));
     if stub.len() > REGION_LEN {
         return Err(format!(

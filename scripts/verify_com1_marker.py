@@ -32,7 +32,7 @@ CWSDPMI_URL = (
 CWSDPMI_SHA1 = "e1d5569817019bbde41eceeeb0a8bed78e87be28"
 CWSDPMI_MEMBER = "BIN/CWSDPMI.EXE"
 
-MARKER = b"stub rm\r\n"
+EXPECTED = b"stub rm\r\nstub pm\r\n"
 HANDSHAKE = b"\xff\x00"
 DOSBOX = next(
     (name for name in ("dosbox", "dosbox-staging") if shutil.which(name)), None
@@ -150,7 +150,7 @@ def capture(mount, port):
             if not chunk:
                 break
             captured += chunk
-            if MARKER in captured:
+            if EXPECTED in captured:
                 break
         conn.close()
 
@@ -176,8 +176,8 @@ def check(captured):
     if not captured.startswith(HANDSHAKE):
         print("FAIL: COM1 capture did not begin with the nullmodem handshake", file=sys.stderr)
         return 1
-    if MARKER not in payload:
-        print(f"FAIL: COM1 never received {MARKER!r}", file=sys.stderr)
+    if EXPECTED not in payload:
+        print(f"FAIL: COM1 never received {EXPECTED!r}", file=sys.stderr)
         return 1
     return 0
 
