@@ -176,7 +176,11 @@ fn postlink_emits_stub_then_image_then_fixup_table_with_self_consistent_header()
         file_len.div_ceil(512) as u16,
         "e_cp"
     );
-    assert_eq!(u16::from_le_bytes([bytes[16], bytes[17]]), 0, "e_sp");
+    assert_eq!(
+        u16::from_le_bytes([bytes[16], bytes[17]]),
+        u16::MAX,
+        "e_sp is the top of the segment"
+    );
     assert_eq!(u16::from_le_bytes([bytes[20], bytes[21]]), 0, "e_ip");
     assert_eq!(u16::from_le_bytes([bytes[22], bytes[23]]), 0, "e_cs");
 
@@ -193,11 +197,11 @@ fn postlink_emits_stub_then_image_then_fixup_table_with_self_consistent_header()
     );
     assert_eq!(
         u16::from_le_bytes([bytes[14], bytes[15]]),
-        (file_len - 32).div_ceil(16) as u16 + STUB_FRAME_PARAGRAPHS,
-        "e_ss is the load module's paragraphs plus e_minalloc"
+        (file_len - 32).div_ceil(16) as u16,
+        "e_ss is the paragraph after the load image"
     );
     const HEADER_LEN: usize = 32;
-    const STUB_LEN: usize = 64;
+    const STUB_LEN: usize = 256;
     const IMAGE_LEN: usize = 6;
 
     let image_offset = HEADER_LEN + STUB_LEN;

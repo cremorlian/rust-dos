@@ -35,11 +35,17 @@ pub fn header(file_len: usize) -> Result<[u8; HEADER_BYTES], Error> {
     let load_module = file_len
         .saturating_sub(HEADER_BYTES)
         .div_ceil(PARAGRAPH_BYTES);
-    let stack = load_module + STUB_FRAME_PARAGRAPHS as usize;
-    if stack > u16::MAX as usize {
+
+    const MEGABYTE_BYTES: usize = 1024 * 1024;
+    const LOAD_MODULE_LIMIT: usize =
+        (MEGABYTE_BYTES - STUB_FRAME_PARAGRAPHS as usize * PARAGRAPH_BYTES) / PARAGRAPH_BYTES;
+    if load_module > LOAD_MODULE_LIMIT {
         return Err(Error::FileLengthTooLarge);
     }
-    out[E_SS..E_SS + 2].copy_from_slice(&(stack as u16).to_le_bytes());
+    out[E_SS..E_SS + 2].copy_from_slice(&(load_module as u16).to_le_bytes());
+
+    const E_SP: usize = 16;
+    out[E_SP..E_SP + 2].copy_from_slice(&u16::MAX.to_le_bytes());
 
     Ok(out)
 }
@@ -69,8 +75,10 @@ mod tests {
 
     const STUB_FRAME_PARAGRAPHS: u16 = 4096;
     const TYPICAL_FILE_LEN: usize = 4112;
-    const LARGEST_ACCEPTED_FILE_LEN: usize =
-        (u16::MAX as usize - STUB_FRAME_PARAGRAPHS as usize) * PARAGRAPH_BYTES + HEADER_BYTES;
+    const MEGABYTE_BYTES: usize = 1024 * 1024;
+    const LOAD_MODULE_LIMIT: usize =
+        (MEGABYTE_BYTES - STUB_FRAME_PARAGRAPHS as usize * PARAGRAPH_BYTES) / PARAGRAPH_BYTES;
+    const LARGEST_ACCEPTED_FILE_LEN: usize = LOAD_MODULE_LIMIT * PARAGRAPH_BYTES + HEADER_BYTES;
 
     #[test]
     fn header_starts_with_mz() {
@@ -119,28 +127,26 @@ mod tests {
     }
 
     #[test]
+    fn e_sp_names_the_top_of_the_stack() {
+        let out = header(TYPICAL_FILE_LEN).unwrap();
+        assert_eq!(
+            u16::from_le_bytes([out[16], out[17]]),
+            u16::MAX,
+            "e_sp is the top of the segment"
+        );
+    }
+
+    #[test]
     fn e_ss_accounts_for_the_file_length() {
         let cases = [
-            (
-                1,
-                STUB_FRAME_PARAGRAPHS,
-                "shorter than the header, so the load module is empty",
-            ),
-            (HEADER_BYTES, STUB_FRAME_PARAGRAPHS, "exactly the header"),
-            (
-                48,
-                STUB_FRAME_PARAGRAPHS + 1,
-                "one whole paragraph of load module",
-            ),
-            (
-                TYPICAL_FILE_LEN,
-                STUB_FRAME_PARAGRAPHS + 255,
-                "typical value",
-            ),
+            (1, 0, "shorter than the header, so the load module is empty"),
+            (HEADER_BYTES, 0, "exactly the header"),
+            (48, 1, "one whole paragraph of load module"),
+            (TYPICAL_FILE_LEN, 255, "typical value"),
             (
                 LARGEST_ACCEPTED_FILE_LEN,
-                u16::MAX,
-                "largest accepted, where e_ss runs out",
+                LOAD_MODULE_LIMIT as u16,
+                "largest accepted, where the frame reaches the megabyte",
             ),
         ];
         for (file_len, e_ss, desc) in cases {
@@ -154,19 +160,31 @@ mod tests {
     }
 
     #[test]
-    fn e_ss_lands_exactly_at_the_top_of_the_reservation() {
+    fn e_ss_and_e_sp_span_exactly_the_reserved_block() {
         let out = header(TYPICAL_FILE_LEN).unwrap();
         let load_module = (TYPICAL_FILE_LEN - HEADER_BYTES).div_ceil(PARAGRAPH_BYTES);
         let e_minalloc = u16::from_le_bytes([out[10], out[11]]) as usize;
         let e_ss = u16::from_le_bytes([out[14], out[15]]) as usize;
-        assert_eq!(e_ss, load_module + e_minalloc, "typical file");
+        let e_sp = u16::from_le_bytes([out[16], out[17]]) as usize;
+        let block = load_module * PARAGRAPH_BYTES;
+
+        assert_eq!(
+            e_ss * PARAGRAPH_BYTES,
+            block,
+            "SS:0 is the block's first byte"
+        );
+        assert_eq!(
+            e_ss * PARAGRAPH_BYTES + e_sp,
+            block + e_minalloc * PARAGRAPH_BYTES - 1,
+            "SS:SP is the block's last byte"
+        );
     }
 
     #[test]
-    fn e_ss_exactly_fills_its_field_at_the_largest_accepted_file() {
+    fn e_ss_reaches_the_megabyte_at_the_largest_accepted_file() {
         let out = header(LARGEST_ACCEPTED_FILE_LEN).unwrap();
         let e_ss = u16::from_le_bytes([out[14], out[15]]) as usize;
-        assert_eq!(e_ss, u16::MAX as usize, "no slack left in e_ss");
+        assert_eq!(e_ss, LOAD_MODULE_LIMIT, "load module fills to 1 MB");
     }
 
     #[test]
@@ -189,8 +207,8 @@ mod tests {
             (HEADER_BYTES + 0x1000, 32, 9, "typical value"),
             (
                 LARGEST_ACCEPTED_FILE_LEN,
-                16,
-                1921,
+                (LARGEST_ACCEPTED_FILE_LEN % 512) as u16,
+                LARGEST_ACCEPTED_FILE_LEN.div_ceil(512) as u16,
                 "highest boundary, set by e_ss rather than e_cp",
             ),
         ];
