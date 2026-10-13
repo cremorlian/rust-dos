@@ -45,8 +45,7 @@ putc:                            ; character in AL
     out dx, al
     ret
 
-puts:                            ; NUL-terminated string at CS:SI, SI advances
-    push ax
+puts:                            ; string at CS:SI; SI advances, AX and DX clobbered
 .lp:
     mov al, [cs:si]
     inc si
@@ -55,7 +54,6 @@ puts:                            ; NUL-terminated string at CS:SI, SI advances
     call putc
     jmp .lp
 .done:
-    pop ax
     ret
 
 entry:  dw 0, 0
