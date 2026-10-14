@@ -32,9 +32,24 @@ CWSDPMI_URL = (
 CWSDPMI_SHA1 = "e1d5569817019bbde41eceeeb0a8bed78e87be28"
 CWSDPMI_MEMBER = "BIN/CWSDPMI.EXE"
 
+# CWSDPMI's AX=1687h handler ends in `mov bx,1`, advertising 32-bit support in
+# BL bit 0. 4966 is the opcode; 4967 is the low byte of its imm16 operand, which
+# is the byte to clear. This mutates the downloaded copy for one scenario and it
+# is never committed or redistributed: CWSDPMI's grant to ship the binary in
+# place of its source covers the official binary "without modification" only, and
+# GPL section 3 applies to distribution, not to running a modified copy locally.
+BL32_OFFSET = 4967
+NO_32BIT = "no32bit"
+
 SCENARIOS = [
     ("host loaded", ["cwsdpmi"], b"stub rm\r\nstub pm\r\n"),
     ("no host", [], b"stub rm\r\nrust-dos: no DPMI host found\r\n"),
+    (
+        "host without 32-bit",
+        [NO_32BIT],
+        b"stub rm\r\nrust-dos: warning: host reports no 32-bit support\r\n"
+        b"stub pm\r\n",
+    ),
 ]
 HANDSHAKE = b"\xff\x00"
 DOSBOX = next(
@@ -62,6 +77,14 @@ def cwsdpmi(cache):
     with zipfile.ZipFile(zip_path) as archive:
         extracted = pathlib.Path(archive.extract(CWSDPMI_MEMBER, cache))
     return extracted
+
+
+def without_32bit(source, dest):
+    data = bytearray(source.read_bytes())
+    if bytes(data[BL32_OFFSET - 1 : BL32_OFFSET + 2]) != b"\xBB\x01\x00":
+        raise SystemExit(f"no `mov bx,1` at {BL32_OFFSET - 1} in {source.name}")
+    data[BL32_OFFSET] = 0x00
+    dest.write_bytes(bytes(data))
 
 
 def consumer_cargo_home():
@@ -198,6 +221,7 @@ if __name__ == "__main__":
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
     shutil.copy(cwsdpmi(work), work / "CWSDPMI.EXE")
+    without_32bit(work / "CWSDPMI.EXE", work / f"{NO_32BIT}.EXE")
     shutil.copy(EXE, work / "HELLO.EXE")
 
     failures = 0

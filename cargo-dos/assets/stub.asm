@@ -10,9 +10,11 @@ bits 16
     int 2fh
     test ax, ax
     jnz .nodpmi
-    test bl, 1                  ; bit 0: host can enter 32-bit
-    jz park
-
+    test bl, 1                  ; bit 0: host offers 32-bit clients
+    jnz .have32
+    mov si, msg_no32            ; a capable host may still report no, so warn
+    call puts                   ; and try regardless: the switch is the authority
+.have32:
     mov [cs:entry], di          ; the far mode-switch entry, before DOS can
     mov [cs:entry + 2], es      ; clobber ES:DI
 
@@ -64,3 +66,4 @@ entry:  dw 0, 0
 msg_rm: db "stub rm", 13, 10, 0
 msg_pm: db "stub pm", 13, 10, 0
 msg_nodpmi: db "rust-dos: no DPMI host found", 13, 10, 0
+msg_no32: db "rust-dos: warning: host reports no 32-bit support", 13, 10, 0
