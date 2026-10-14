@@ -41,6 +41,9 @@ NO_32BIT = "no32bit"
 INIT_SIZE_OFFSET = 4972  # `mov si,[cs:_init_size]`, which sizes that allocation
 HUNGRY = "hungry"
 
+REFUSES_SWITCH_OFFSET = 4988  # dpmientry, so the switch returns carry
+REFUSES = "refuses"
+
 SCENARIOS = [
     ("host loaded", ["cwsdpmi"], b"stub rm\r\nstub pm\r\n"),
     ("no host", [], b"stub rm\r\nrust-dos: no DPMI host found\r\n"),
@@ -54,6 +57,11 @@ SCENARIOS = [
         "host wants more memory than DOS has",
         [HUNGRY],
         b"stub rm\r\nrust-dos: insufficient memory for the DPMI host\r\n",
+    ),
+    (
+        "host refuses mode switch",
+        [REFUSES],
+        b"stub rm\r\nrust-dos: DPMI host refused mode switch\r\n",
     ),
 ]
 HANDSHAKE = b"\xff\x00"
@@ -98,6 +106,15 @@ def hungry(source, dest):
     if bytes(data[INIT_SIZE_OFFSET : INIT_SIZE_OFFSET + len(load)]) != load:
         raise SystemExit(f"no `mov si,[cs:_init_size]` at {INIT_SIZE_OFFSET}")
     data[INIT_SIZE_OFFSET : INIT_SIZE_OFFSET + len(load)] = b"\xBE\xFF\xFF\x90\x90"
+    dest.write_bytes(bytes(data))
+
+
+def refuses(source, dest):
+    data = bytearray(source.read_bytes())
+    probe = bytes(data[REFUSES_SWITCH_OFFSET : REFUSES_SWITCH_OFFSET + 4])
+    if probe != b"\xA8\x01\x75\x29":  # test al,1 / jnz ok_32
+        raise SystemExit(f"no mode-switch entry at {REFUSES_SWITCH_OFFSET}")
+    data[REFUSES_SWITCH_OFFSET : REFUSES_SWITCH_OFFSET + 2] = b"\xF9\xCB"  # stc/retf
     dest.write_bytes(bytes(data))
 
 
@@ -237,6 +254,7 @@ if __name__ == "__main__":
     shutil.copy(cwsdpmi(work), work / "CWSDPMI.EXE")
     without_32bit(work / "CWSDPMI.EXE", work / f"{NO_32BIT}.EXE")
     hungry(work / "CWSDPMI.EXE", work / f"{HUNGRY}.EXE")
+    refuses(work / "CWSDPMI.EXE", work / f"{REFUSES}.EXE")
     shutil.copy(EXE, work / "HELLO.EXE")
 
     failures = 0

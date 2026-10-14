@@ -26,9 +26,15 @@ bits 16
 
     mov ax, 1                   ; 32-bit client
     call far [cs:entry]
+    jc .noswitch
 
     mov si, msg_pm
     call puts
+    jmp park
+
+.noswitch:
+    mov si, msg_noswitch
+    jmp .fail
 
 .nodpmi:
     mov si, msg_nodpmi
@@ -75,3 +81,4 @@ msg_pm: db "stub pm", 13, 10, 0
 msg_nodpmi: db "rust-dos: no DPMI host found", 13, 10, 0
 msg_no32: db "rust-dos: warning: host reports no 32-bit support", 13, 10, 0
 msg_nomem: db "rust-dos: insufficient memory for the DPMI host", 13, 10, 0
+msg_noswitch: db "rust-dos: DPMI host refused mode switch", 13, 10, 0
