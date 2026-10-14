@@ -32,7 +32,10 @@ CWSDPMI_URL = (
 CWSDPMI_SHA1 = "e1d5569817019bbde41eceeeb0a8bed78e87be28"
 CWSDPMI_MEMBER = "BIN/CWSDPMI.EXE"
 
-EXPECTED = b"stub rm\r\nstub pm\r\n"
+SCENARIOS = [
+    ("host loaded", ["cwsdpmi"], b"stub rm\r\nstub pm\r\n"),
+    ("no host", [], b"stub rm\r\nrust-dos: no DPMI host found\r\n"),
+]
 HANDSHAKE = b"\xff\x00"
 DOSBOX = next(
     (name for name in ("dosbox", "dosbox-staging") if shutil.which(name)), None
@@ -98,7 +101,7 @@ def free_port():
     return port
 
 
-def capture(mount, port):
+def capture(mount, port, commands, wanted):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind(("127.0.0.1", port))
@@ -118,11 +121,9 @@ def capture(mount, port):
         f"mount c {mount}",
         "-c",
         "c:",
-        "-c",
-        "cwsdpmi",
-        "-c",
-        "hello",
     ]
+    for line in [*commands, "hello"]:
+        command += ["-c", line]
     log = tempfile.NamedTemporaryFile(prefix="dosbox-", suffix=".log", delete=False)
     env = dict(os.environ)
     env.setdefault("SDL_VIDEODRIVER", "offscreen")
@@ -150,7 +151,7 @@ def capture(mount, port):
             if not chunk:
                 break
             captured += chunk
-            if EXPECTED in captured:
+            if wanted in captured:
                 break
         conn.close()
 
@@ -169,15 +170,18 @@ def capture(mount, port):
     return captured
 
 
-def check(captured):
+def check(name, captured, wanted):
     payload = captured[len(HANDSHAKE) :] if captured.startswith(HANDSHAKE) else captured
-    print(f"captured {len(captured)} bytes: {captured[:200]!r}")
+    print(f"[{name}] captured {len(captured)} bytes: {captured[:200]!r}")
 
     if not captured.startswith(HANDSHAKE):
-        print("FAIL: COM1 capture did not begin with the nullmodem handshake", file=sys.stderr)
+        print(
+            f"FAIL [{name}]: COM1 capture did not begin with the nullmodem handshake",
+            file=sys.stderr,
+        )
         return 1
-    if EXPECTED not in payload:
-        print(f"FAIL: COM1 never received {EXPECTED!r}", file=sys.stderr)
+    if wanted not in payload:
+        print(f"FAIL [{name}]: COM1 never received {wanted!r}", file=sys.stderr)
         return 1
     return 0
 
@@ -195,4 +199,9 @@ if __name__ == "__main__":
     work.mkdir(parents=True)
     shutil.copy(cwsdpmi(work), work / "CWSDPMI.EXE")
     shutil.copy(EXE, work / "HELLO.EXE")
-    sys.exit(check(capture(work, free_port())))
+
+    failures = 0
+    for name, commands, wanted in SCENARIOS:
+        captured = capture(work, free_port(), commands, wanted)
+        failures |= check(name, captured, wanted)
+    sys.exit(failures)

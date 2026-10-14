@@ -9,7 +9,7 @@ bits 16
     mov ax, 1687h               ; DPMI detect
     int 2fh
     test ax, ax
-    jnz park
+    jnz .nodpmi
     test bl, 1                  ; bit 0: host can enter 32-bit
     jz park
 
@@ -26,6 +26,10 @@ bits 16
     call far [cs:entry]
 
     mov si, msg_pm
+    call puts
+
+.nodpmi:
+    mov si, msg_nodpmi
     call puts
 
 park:
@@ -59,3 +63,4 @@ puts:                            ; string at CS:SI; SI advances, AX and DX clobb
 entry:  dw 0, 0
 msg_rm: db "stub rm", 13, 10, 0
 msg_pm: db "stub pm", 13, 10, 0
+msg_nodpmi: db "rust-dos: no DPMI host found", 13, 10, 0
