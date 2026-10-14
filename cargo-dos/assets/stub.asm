@@ -21,7 +21,7 @@ bits 16
     mov bx, si                  ; private paragraphs the host asked for
     mov ah, 48h                 ; DOS allocate
     int 21h
-    jc park
+    jc .nomem
     mov es, ax
 
     mov ax, 1                   ; 32-bit client
@@ -32,6 +32,13 @@ bits 16
 
 .nodpmi:
     mov si, msg_nodpmi
+    jmp .fail
+
+.nomem:
+    mov si, msg_nomem
+    jmp .fail
+
+.fail:
     call puts
 
 park:
@@ -67,3 +74,4 @@ msg_rm: db "stub rm", 13, 10, 0
 msg_pm: db "stub pm", 13, 10, 0
 msg_nodpmi: db "rust-dos: no DPMI host found", 13, 10, 0
 msg_no32: db "rust-dos: warning: host reports no 32-bit support", 13, 10, 0
+msg_nomem: db "rust-dos: insufficient memory for the DPMI host", 13, 10, 0

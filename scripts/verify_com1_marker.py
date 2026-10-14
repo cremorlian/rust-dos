@@ -32,14 +32,14 @@ CWSDPMI_URL = (
 CWSDPMI_SHA1 = "e1d5569817019bbde41eceeeb0a8bed78e87be28"
 CWSDPMI_MEMBER = "BIN/CWSDPMI.EXE"
 
-# CWSDPMI's AX=1687h handler ends in `mov bx,1`, advertising 32-bit support in
-# BL bit 0. 4966 is the opcode; 4967 is the low byte of its imm16 operand, which
-# is the byte to clear. This mutates the downloaded copy for one scenario and it
-# is never committed or redistributed: CWSDPMI's grant to ship the binary in
-# place of its source covers the official binary "without modification" only, and
-# GPL section 3 applies to distribution, not to running a modified copy locally.
-BL32_OFFSET = 4967
+# Test-only mutation of the downloaded copy; never committed or redistributed.
+# See the README's Testing section.
+BL32_OFFSET = 4967  # low byte of the imm16 in `mov bx,1`, which advertises 32-bit
 NO_32BIT = "no32bit"
+
+# 0xFFFF paragraphs cannot fit below the megabyte, so INT 21h/48h fails.
+INIT_SIZE_OFFSET = 4972  # `mov si,[cs:_init_size]`, which sizes that allocation
+HUNGRY = "hungry"
 
 SCENARIOS = [
     ("host loaded", ["cwsdpmi"], b"stub rm\r\nstub pm\r\n"),
@@ -49,6 +49,11 @@ SCENARIOS = [
         [NO_32BIT],
         b"stub rm\r\nrust-dos: warning: host reports no 32-bit support\r\n"
         b"stub pm\r\n",
+    ),
+    (
+        "host wants more memory than DOS has",
+        [HUNGRY],
+        b"stub rm\r\nrust-dos: insufficient memory for the DPMI host\r\n",
     ),
 ]
 HANDSHAKE = b"\xff\x00"
@@ -84,6 +89,15 @@ def without_32bit(source, dest):
     if bytes(data[BL32_OFFSET - 1 : BL32_OFFSET + 2]) != b"\xBB\x01\x00":
         raise SystemExit(f"no `mov bx,1` at {BL32_OFFSET - 1} in {source.name}")
     data[BL32_OFFSET] = 0x00
+    dest.write_bytes(bytes(data))
+
+
+def hungry(source, dest):
+    data = bytearray(source.read_bytes())
+    load = b"\x2E\x8B\x36\x58\x11"  # mov si,[cs:_init_size]
+    if bytes(data[INIT_SIZE_OFFSET : INIT_SIZE_OFFSET + len(load)]) != load:
+        raise SystemExit(f"no `mov si,[cs:_init_size]` at {INIT_SIZE_OFFSET}")
+    data[INIT_SIZE_OFFSET : INIT_SIZE_OFFSET + len(load)] = b"\xBE\xFF\xFF\x90\x90"
     dest.write_bytes(bytes(data))
 
 
@@ -222,6 +236,7 @@ if __name__ == "__main__":
     work.mkdir(parents=True)
     shutil.copy(cwsdpmi(work), work / "CWSDPMI.EXE")
     without_32bit(work / "CWSDPMI.EXE", work / f"{NO_32BIT}.EXE")
+    hungry(work / "CWSDPMI.EXE", work / f"{HUNGRY}.EXE")
     shutil.copy(EXE, work / "HELLO.EXE")
 
     failures = 0

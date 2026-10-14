@@ -201,7 +201,7 @@ fn postlink_emits_stub_then_image_then_fixup_table_with_self_consistent_header()
         "e_ss is the paragraph after the load image"
     );
     const HEADER_LEN: usize = 32;
-    const STUB_LEN: usize = 256;
+    const STUB_LEN: usize = 512;
     const IMAGE_LEN: usize = 6;
 
     let image_offset = HEADER_LEN + STUB_LEN;
