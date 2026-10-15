@@ -201,15 +201,16 @@ fn postlink_emits_stub_then_image_then_fixup_table_with_self_consistent_header()
         "e_ss is the paragraph after the load image"
     );
     const HEADER_LEN: usize = 32;
-    const STUB_LEN: usize = 512;
     const IMAGE_LEN: usize = 6;
 
-    let image_offset = HEADER_LEN + STUB_LEN;
+    let stub = cargo_dos::stub::build();
+    let image_offset = HEADER_LEN + stub.len();
     let table_offset = image_offset + IMAGE_LEN;
 
-    assert!(
-        image_offset > HEADER_LEN,
-        "a stub region sits between the header and the image"
+    assert_eq!(
+        &bytes[HEADER_LEN..image_offset],
+        &stub[..],
+        "the image begins immediately after the stub ends"
     );
     assert_eq!(
         &bytes[image_offset..table_offset],
