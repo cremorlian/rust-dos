@@ -45,7 +45,7 @@ REFUSES_SWITCH_OFFSET = 4988  # dpmientry, so the switch returns carry
 REFUSES = "refuses"
 
 SCENARIOS = [
-    ("host loaded", ["cwsdpmi"], b"stub rm\r\nstub pm\r\nimage pm\r\n"),
+    ("host loaded", ["cwsdpmi"], b"hello, dos\r\n"),
     ("no host", [], b"stub rm\r\nrust-dos: no DPMI host found\r\n"),
     (
         "host without 32-bit",

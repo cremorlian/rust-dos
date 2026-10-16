@@ -30,23 +30,21 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
     park()
 }
 
-static GREETING: u32 = 0x1337;
+static MARKER: &str = "hello, dos\r\n";
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
-    core::hint::black_box(GREETING);
-    // Each marker byte is an immediate rather than a static, so writing the
-    // marker does not exercise DS.
-    putc(b'i');
-    putc(b'm');
-    putc(b'a');
-    putc(b'g');
-    putc(b'e');
-    putc(b' ');
-    putc(b'p');
-    putc(b'm');
-    putc(b'\r');
-    putc(b'\n');
+    // black_box stops the compiler inlining the static's address into a
+    // memory load, which would read the string's bytes as a pointer.
+    let m = core::hint::black_box(MARKER);
+    // Raw pointers, not slice indexing: indexing pulls in memcpy/memset,
+    // which libc-less targets do not have.
+    let mut ptr = m.as_ptr();
+    let end = unsafe { ptr.add(m.len()) };
+    while ptr < end {
+        putc(unsafe { *ptr });
+        ptr = unsafe { ptr.add(1) };
+    }
     park()
 }
 
