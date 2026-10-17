@@ -63,6 +63,12 @@ SCENARIOS = [
         [REFUSES],
         b"stub rm\r\nrust-dos: DPMI host refused mode switch\r\n",
     ),
+    (
+        "no LDT descriptors",
+        ["cwsdpmi"],
+        b"stub rm\r\nstub pm\r\nrust-dos: no LDT descriptors available\r\n",
+        "many",
+    ),
 ]
 HANDSHAKE = b"\xff\x00"
 DOSBOX = next(
@@ -118,6 +124,16 @@ def refuses(source, dest):
     dest.write_bytes(bytes(data))
 
 
+def request_many_descriptors(source, dest):
+    data = bytearray(source.read_bytes())
+    needle = b"\xb9\x02\x00"  # mov cx, 2
+    idx = data.find(needle)
+    if idx < 0:
+        raise SystemExit(f"no `mov cx, 2` in {source.name}")
+    data[idx : idx + 3] = b"\xb9\x80\x00"  # mov cx, 128
+    dest.write_bytes(bytes(data))
+
+
 def consumer_cargo_home():
     home = os.environ.get("CARGO_HOME")
     if home:
@@ -155,7 +171,7 @@ def free_port():
     return port
 
 
-def capture(mount, port, commands, wanted):
+def capture(mount, port, commands, wanted, exe="hello"):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind(("127.0.0.1", port))
@@ -176,7 +192,7 @@ def capture(mount, port, commands, wanted):
         "-c",
         "c:",
     ]
-    for line in [*commands, "hello"]:
+    for line in [*commands, exe]:
         command += ["-c", line]
     log = tempfile.NamedTemporaryFile(prefix="dosbox-", suffix=".log", delete=False)
     env = dict(os.environ)
@@ -256,9 +272,15 @@ if __name__ == "__main__":
     hungry(work / "CWSDPMI.EXE", work / f"{HUNGRY}.EXE")
     refuses(work / "CWSDPMI.EXE", work / f"{REFUSES}.EXE")
     shutil.copy(EXE, work / "HELLO.EXE")
+    request_many_descriptors(EXE, work / "MANY.EXE")
 
     failures = 0
-    for name, commands, wanted in SCENARIOS:
-        captured = capture(work, free_port(), commands, wanted)
+    for entry in SCENARIOS:
+        if len(entry) == 4:
+            name, commands, wanted, exe = entry
+        else:
+            name, commands, wanted = entry
+            exe = "hello"
+        captured = capture(work, free_port(), commands, wanted, exe)
         failures |= check(name, captured, wanted)
     sys.exit(failures)

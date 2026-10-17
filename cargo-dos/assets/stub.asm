@@ -47,6 +47,7 @@ bits 16
     xor ax, ax
     mov cx, 2                   ; a code and a data descriptor, contiguous
     int 31h
+    jc .nodesc                  ; host could not allocate LDT descriptors
     mov [ss:0FFC0h], ax         ; see above: this is where the selectors live
 
     mov ax, 0003h               ; selector increment, which cannot fail
@@ -121,6 +122,10 @@ bits 16
     mov si, msg_nomem
     jmp .fail
 
+.nodesc:
+    mov si, msg_nodesc
+    jmp .fail
+
 .fail:
     call puts
 
@@ -159,6 +164,7 @@ msg_pm: db "stub pm", 13, 10, 0
 msg_nodpmi: db "rust-dos: no DPMI host found", 13, 10, 0
 msg_no32: db "rust-dos: warning: host reports no 32-bit support", 13, 10, 0
 msg_nomem: db "rust-dos: insufficient memory for the DPMI host", 13, 10, 0
+msg_nodesc: db "rust-dos: no LDT descriptors available", 13, 10, 0
 msg_noswitch: db "rust-dos: DPMI host refused mode switch", 13, 10, 0
 
 IMAGE_OFF equ $ - $$
