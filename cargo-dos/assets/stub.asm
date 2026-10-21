@@ -20,10 +20,13 @@ bits 16
     mov [cs:entry + 2], es      ; clobber ES:DI
 
     mov bx, si                  ; private paragraphs the host asked for
+    test bx, bx                 ; zero: no data area, and ES is ignored
+    jz .have_private
     mov ah, 48h                 ; DOS allocate
     int 21h
     jc .nomem
     mov es, ax
+.have_private:
 
     mov ax, 1                   ; 32-bit client
     call far [cs:entry]
@@ -36,36 +39,51 @@ bits 16
 
 ;   The DPMI switch leaves us in a 16-bit segment, so the 32-bit instructions
 ;   here and in the far jump below each carry their own operand-size prefix;
-;   use32 would suppress them. SS and DS come back pointing at the host's own
-;   data segment, 32-bit-default.
+;   use32 would suppress them.
 
-;   The host's data segment is the only writable memory before we own a
-;   descriptor, and 0000h and 0003h return through AX, which every later call
-;   overwrites with its function number. So the selectors are parked near the top
-;   of that segment, which is safe only because a host keeps its TSS stack low.
+;   Before we own a descriptor there is no writable data segment of our own, so
+;   the two values 0000h and 0003h return through AX are moved into registers
+;   that INT 31h preserves. The far pointer below is built on the stack, so no
+;   fixed host-segment address is involved.
 
     xor ax, ax
     mov cx, 2                   ; a code and a data descriptor, contiguous
     int 31h
     jc .nodesc                  ; host could not allocate LDT descriptors
-    mov [ss:0FFC0h], ax         ; see above: this is where the selectors live
+    mov si, ax                  ; the data selector; 0000h returns it in AX
 
     mov ax, 0003h               ; selector increment, which cannot fail
     int 31h
-    mov [ss:0FFC2h], ax
+    mov di, ax                  ; the code selector is SI + DI
 
-    mov bx, [ss:0FFC0h]
-    mov cl, 0F2h                ; present, DPL 3, data, read/write
+    ; DPMI 0.9 5.2: a client must not assume the ring it runs at. Read the
+    ; DPL of the code segment the switch returned and use that ring for the
+    ; descriptors, so the far jump below stays at the current privilege level.
+    mov dx, cs
+    lar ax, dx                  ; AX = access rights of the initial CS
+    mov bp, ax
+    shr bp, 13                  ; the access byte is bits 8-15; DPL is its 5-6
+    and bp, 3
+    shl bp, 5                   ; BP = the DPL field of an access byte
+
+    mov bx, si
+    mov cl, 092h                ; present, data, read/write
+    mov ax, bp
+    or cl, al                   ; plus the client's own DPL
     mov ch, 0C0h                ; page granular, default 32-bit
     mov ax, 0009h
     int 31h
+    jc .rights_fail
 
-    mov bx, [ss:0FFC0h]         ; data plus the increment is the code one
-    add bx, [ss:0FFC2h]
-    mov cl, 0FAh                ; present, DPL 3, code, readable
+    mov bx, si                  ; data plus the increment is the code one
+    add bx, di
+    mov cl, 09Ah                ; present, code, readable
+    mov ax, bp
+    or cl, al
     mov ch, 0C0h
     mov ax, 0009h
     int 31h
+    jc .rights_fail
 
 ;   Base both at the image start, loadseg*16 + IMAGE_OFF. The CPU adds a
 ;   segment base to every offset, so the image's image-relative addresses
@@ -77,38 +95,45 @@ bits 16
     mov dx, ax
     shr eax, 16
     mov cx, ax                  ; the base arrives as CX:DX, CX being the high word
-    mov bx, [ss:0FFC0h]
+    mov bx, si
     mov ax, 0007h
     int 31h
-    mov bx, [ss:0FFC0h]
-    add bx, [ss:0FFC2h]
+    jc .desc_fail
+    mov bx, si
+    add bx, di
     mov ax, 0007h
     int 31h
+    jc .desc_fail
 
     mov cx, 0FFFFh              ; 4 GB
     mov dx, 0FFFFh
-    mov bx, [ss:0FFC0h]
+    mov bx, si
     mov ax, 0008h
     int 31h
-    mov bx, [ss:0FFC0h]
-    add bx, [ss:0FFC2h]
+    jc .desc_fail
+    mov bx, si
+    add bx, di
     mov ax, 0008h
     int 31h
+    jc .desc_fail
 
-    mov si, [ss:0FFC0h]         ; the data selector, and the code selector is
-    mov bp, si                  ; this one plus the increment
-    add bp, [ss:0FFC2h]
+    mov bp, si                  ; the code selector is the data one plus the
+    add bp, di                  ; increment
 
-    mov word [ss:0FFC4h], 0     ; a far pointer: eip 0, then the code selector.
-    mov word [ss:0FFC6h], 0     ; Two word stores, not one dword: nasm gives
-    mov [ss:0FFC8h], bp         ; `mov dword [...], 0` a 2-byte immediate here
+;   A far pointer on the stack: selector, then the 32-bit zero offset. SP finds
+;   it, so nothing is stored at a fixed offset in the host's segment.
+    push bp
+    push word 0
+    push word 0
+    mov bp, sp
     mov ds, si
     mov es, si
 
-;   A far jump, not a far return. The target selector has RPL 3 and so does our
-;   CPL, so retf would not pop SS and ESP either; a jump just needs no stack.
+;   A far jump, not a far return. The target selector's RPL equals our CPL,
+;   so retf would not switch stacks either; the jump leaves the pointer on the
+;   stack instead of popping it.
     db 66h
-    jmp far [ss:0FFC4h]
+    jmp far [ss:bp]
 
 .noswitch:
     mov si, msg_noswitch
@@ -124,6 +149,14 @@ bits 16
 
 .nodesc:
     mov si, msg_nodesc
+    jmp .fail
+
+.rights_fail:
+    mov si, msg_rights
+    jmp .fail
+
+.desc_fail:
+    mov si, msg_desc
     jmp .fail
 
 .fail:
@@ -165,6 +198,8 @@ msg_nodpmi: db "rust-dos: no DPMI host found", 13, 10, 0
 msg_no32: db "rust-dos: warning: host reports no 32-bit support", 13, 10, 0
 msg_nomem: db "rust-dos: insufficient memory for the DPMI host", 13, 10, 0
 msg_nodesc: db "rust-dos: no LDT descriptors available", 13, 10, 0
+msg_rights: db "rust-dos: DPMI host rejected descriptor rights", 13, 10, 0
+msg_desc: db "rust-dos: DPMI host rejected descriptor setup", 13, 10, 0
 msg_noswitch: db "rust-dos: DPMI host refused mode switch", 13, 10, 0
 
 IMAGE_OFF equ $ - $$
