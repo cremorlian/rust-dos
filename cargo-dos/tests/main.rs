@@ -206,7 +206,19 @@ fn postlink_emits_stub_then_image_then_fixup_table_with_self_consistent_header()
     let stub = cargo_dos::stub::build(IMAGE_LEN).expect("the table offset should fit");
     let image_offset = HEADER_LEN + stub.len();
     let table_offset = image_offset + IMAGE_LEN;
+    let table_off_at = HEADER_LEN + stub.len() - 4;
+    let table_off = u32::from_le_bytes(bytes[table_off_at..table_off_at + 4].try_into().unwrap());
 
+    assert_eq!(
+        table_off as usize,
+        stub.len() + IMAGE_LEN,
+        "TABLE_OFF is module-relative"
+    );
+    assert_eq!(
+        HEADER_LEN + table_off as usize,
+        table_offset,
+        "TABLE_OFF points at the fixup table"
+    );
     assert_eq!(
         &bytes[HEADER_LEN..image_offset],
         &stub[..],

@@ -28,6 +28,9 @@ bits 16
     mov es, ax
 .have_private:
 
+    mov [cs:saved_ss], ss
+    mov [cs:saved_sp], sp
+
     mov ax, 1                   ; 32-bit client
     call far [cs:entry]
     jc .noswitch
@@ -85,9 +88,15 @@ bits 16
     int 31h
     jc .rights_fail
 
-;   Base both at the image start, loadseg*16 + IMAGE_OFF. The CPU adds a
-;   segment base to every offset, so the image's image-relative addresses
-;   resolve through DS as linked and the fixup table is never applied.
+;   The data descriptor is flat; the code descriptor stays at the image's
+;   load address. The CPU adds a segment base to every offset.
+    xor cx, cx
+    xor dx, dx
+    mov bx, si
+    mov ax, 0007h
+    int 31h
+    jc .desc_fail
+
     mov bp, [cs:loadseg]
     movzx eax, bp               ; base = loadseg*16 + IMAGE_OFF. A 16-bit shift
     shl eax, 4                  ; would truncate: loadseg*16 overflows 16 bits
@@ -95,10 +104,6 @@ bits 16
     mov dx, ax
     shr eax, 16
     mov cx, ax                  ; the base arrives as CX:DX, CX being the high word
-    mov bx, si
-    mov ax, 0007h
-    int 31h
-    jc .desc_fail
     mov bx, si
     add bx, di
     mov ax, 0007h
@@ -117,23 +122,52 @@ bits 16
     int 31h
     jc .desc_fail
 
+    mov ds, si
+    mov es, si
+
+;   Apply the image's R_386_32 relocations through the flat data selector.
+;   TABLE_OFF is module-relative; the table itself follows the image.
+    mov bp, [cs:loadseg]
+    movzx ebx, bp
+    shl ebx, 4
+    add ebx, IMAGE_OFF          ; EBX = image load address
+    movzx edx, bp
+    shl edx, 4
+    mov eax, [cs:table_off]
+    add edx, eax                ; EDX = fixup table address
+.reloc:
+    mov eax, [edx]
+    cmp eax, 0FFFFFFFFh
+    je .reloc_done
+    add eax, ebx
+    add dword [eax], ebx
+    add edx, 4
+    jmp .reloc
+.reloc_done:
+
     mov bp, si                  ; the code selector is the data one plus the
     add bp, di                  ; increment
+
+;   Switch to the saved real-mode stack, now addressed linearly.
+    movzx eax, word [cs:saved_ss]
+    shl eax, 4
+    movzx edx, word [cs:saved_sp]
+    add eax, edx
+    mov ss, si
+    mov esp, eax
 
 ;   A far pointer on the stack: selector, then the 32-bit zero offset. SP finds
 ;   it, so nothing is stored at a fixed offset in the host's segment.
     push bp
     push word 0
     push word 0
-    mov bp, sp
-    mov ds, si
-    mov es, si
+    mov ebp, esp
 
 ;   A far jump, not a far return. The target selector's RPL equals our CPL,
 ;   so retf would not switch stacks either; the jump leaves the pointer on the
 ;   stack instead of popping it.
     db 66h
-    jmp far [ss:bp]
+    jmp far [ss:ebp]
 
 .noswitch:
     mov si, msg_noswitch
@@ -192,6 +226,8 @@ puts:                            ; string at CS:SI; SI advances, AX and DX clobb
 
 entry:  dw 0, 0
 loadseg: dw 0
+saved_ss: dw 0
+saved_sp: dw 0
 msg_rm: db "stub rm", 13, 10, 0
 msg_pm: db "stub pm", 13, 10, 0
 msg_nodpmi: db "rust-dos: no DPMI host found", 13, 10, 0

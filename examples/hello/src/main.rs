@@ -30,21 +30,32 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
     park()
 }
 
-static MARKER: &str = "hello, dos\r\n";
+static PREFIX: [u8; 5] = *b"hello";
+static SUFFIX: [u8; 5] = *b"dos\r\n";
 
-#[unsafe(no_mangle)]
-pub extern "C" fn _start() -> ! {
-    // black_box stops the compiler inlining the static's address into a
-    // memory load, which would read the string's bytes as a pointer.
-    let m = core::hint::black_box(MARKER);
-    // Raw pointers, not slice indexing: indexing pulls in memcpy/memset,
-    // which libc-less targets do not have.
-    let mut ptr = m.as_ptr();
-    let end = unsafe { ptr.add(m.len()) };
+#[inline(never)]
+fn emit(bytes: &[u8]) {
+    // black_box keeps the stack pointer opaque, so the loop dereferences it
+    // through a general register (DS) rather than through EBP/ESP (SS).
+    let mut ptr = core::hint::black_box(bytes.as_ptr());
+    let end = unsafe { ptr.add(bytes.len()) };
     while ptr < end {
         putc(unsafe { *ptr });
         ptr = unsafe { ptr.add(1) };
     }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn _start() -> ! {
+    let prefix = core::hint::black_box(&PREFIX);
+    let suffix = core::hint::black_box(&SUFFIX);
+
+    let line = [
+        prefix[0], prefix[1], prefix[2], prefix[3], prefix[4], b',', b' ', suffix[0],
+        suffix[1], suffix[2], suffix[3], suffix[4],
+    ];
+
+    emit(&line);
     park()
 }
 
