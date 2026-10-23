@@ -32,17 +32,18 @@ fn cmd_postlink() -> Result<(), String> {
         .ok_or_else(|| "usage: cargo dos postlink <elf>".to_string())?;
     let stem = Path::new(&input).file_stem().unwrap_or_default();
     let out = format!("{}.exe", stem.to_string_lossy());
-    let exe = build_exe(&input, &stub::build())?;
+    let exe = build_exe(&input)?;
     fs::write(out, exe).map_err(|e| e.to_string())
 }
 
-fn build_exe(input: &str, stub: &[u8]) -> Result<Vec<u8>, String> {
+fn build_exe(input: &str) -> Result<Vec<u8>, String> {
     let bytes = fs::read(input).map_err(|e| e.to_string())?;
     let data = elf::extract(&bytes).map_err(|e| format!("{e:?}"))?;
+    let stub = stub::build(data.image.len()).map_err(|e| format!("{e:?}"))?;
     let table = fixups::table(&data.fixups).map_err(|e| format!("{e:?}"))?;
     let file_len = 32 + stub.len() + data.image.len() + table.len();
     let header = mz::header(file_len).map_err(|e| format!("{e:?}"))?;
-    Ok(packer::compose(header, stub, &data.image, &table))
+    Ok(packer::compose(header, &stub, &data.image, &table))
 }
 
 fn cmd_init() -> Result<(), std::io::Error> {

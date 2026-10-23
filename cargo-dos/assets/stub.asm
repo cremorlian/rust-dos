@@ -202,4 +202,6 @@ msg_rights: db "rust-dos: DPMI host rejected descriptor rights", 13, 10, 0
 msg_desc: db "rust-dos: DPMI host rejected descriptor setup", 13, 10, 0
 msg_noswitch: db "rust-dos: DPMI host refused mode switch", 13, 10, 0
 
+table_off: dd 0
+
 IMAGE_OFF equ $ - $$

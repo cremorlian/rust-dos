@@ -203,7 +203,7 @@ fn postlink_emits_stub_then_image_then_fixup_table_with_self_consistent_header()
     const HEADER_LEN: usize = 32;
     const IMAGE_LEN: usize = 6;
 
-    let stub = cargo_dos::stub::build();
+    let stub = cargo_dos::stub::build(IMAGE_LEN).expect("the table offset should fit");
     let image_offset = HEADER_LEN + stub.len();
     let table_offset = image_offset + IMAGE_LEN;
 
