@@ -55,7 +55,8 @@ pub extern "C" fn _start() -> ! {
         suffix[1], suffix[2], suffix[3], suffix[4],
     ];
 
-    emit(&line);
+    let emit_fn = core::hint::black_box(emit as fn(&[u8]));
+    emit_fn(&line);
     park()
 }
 

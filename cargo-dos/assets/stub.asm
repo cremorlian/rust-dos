@@ -88,8 +88,8 @@ bits 16
     int 31h
     jc .rights_fail
 
-;   The data descriptor is flat; the code descriptor stays at the image's
-;   load address. The CPU adds a segment base to every offset.
+;   Both descriptors are flat. The image's linked offsets become linear
+;   addresses through the relocation pass before any image code runs.
     xor cx, cx
     xor dx, dx
     mov bx, si
@@ -97,13 +97,8 @@ bits 16
     int 31h
     jc .desc_fail
 
-    mov bp, [cs:loadseg]
-    movzx eax, bp               ; base = loadseg*16 + IMAGE_OFF. A 16-bit shift
-    shl eax, 4                  ; would truncate: loadseg*16 overflows 16 bits
-    add eax, IMAGE_OFF          ; once loadseg passes 1000h
-    mov dx, ax
-    shr eax, 16
-    mov cx, ax                  ; the base arrives as CX:DX, CX being the high word
+    xor cx, cx
+    xor dx, dx
     mov bx, si
     add bx, di
     mov ax, 0007h
@@ -156,11 +151,10 @@ bits 16
     mov ss, si
     mov esp, eax
 
-;   A far pointer on the stack: selector, then the 32-bit zero offset. SP finds
-;   it, so nothing is stored at a fixed offset in the host's segment.
+;   A far pointer on the stack: selector, then the 32-bit linear entry address.
+;   EBP finds it, so nothing is stored at a fixed offset in the host's segment.
     push bp
-    push word 0
-    push word 0
+    push ebx                    ; the image's load address, from the relocation
     mov ebp, esp
 
 ;   A far jump, not a far return. The target selector's RPL equals our CPL,
