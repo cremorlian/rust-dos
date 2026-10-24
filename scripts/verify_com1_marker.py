@@ -51,57 +51,48 @@ FAKE_NOPRIV = "nopriv"
 
 SCENARIOS = [
     ("host loaded", ["cwsdpmi"], b"hello, dos\r\n"),
-    ("no host", [], b"stub rm\r\nrust-dos: no DPMI host found\r\n"),
+    ("no host", [], b"rust-dos: no DPMI host found\r\n"),
     (
         "host without 32-bit",
         [NO32],
-        b"stub rm\r\nrust-dos: warning: host reports no 32-bit support\r\n"
-        b"stub pm\r\nhello, dos\r\n",
+        b"rust-dos: warning: host reports no 32-bit support\r\nhello, dos\r\n",
     ),
     (
         "host wants more memory than DOS has",
         [FAKE_HUNGRY],
-        b"stub rm\r\nrust-dos: insufficient memory for the DPMI host\r\n",
+        b"rust-dos: insufficient memory for the DPMI host\r\n",
     ),
-    (
-        "host needs no private memory",
-        [FAKE_NOPRIV],
-        b"stub rm\r\nstub pm\r\nhello, dos\r\n",
-    ),
+    ("host needs no private memory", [FAKE_NOPRIV], b"hello, dos\r\n"),
     (
         "host refuses mode switch",
         [REFUSE],
-        b"stub rm\r\nrust-dos: DPMI host refused mode switch\r\n",
+        b"rust-dos: DPMI host refused mode switch\r\n",
     ),
-    (
-        "fake host boots the client",
-        [FAKEHOST],
-        b"stub rm\r\nstub pm\r\nhello, dos\r\n",
-    ),
+    ("fake host boots the client", [FAKEHOST], b"hello, dos\r\n"),
     (
         "no LDT descriptors",
         [FAKE_NODESC],
-        b"stub rm\r\nstub pm\r\nrust-dos: no LDT descriptors available\r\n",
+        b"rust-dos: no LDT descriptors available\r\n",
     ),
     (
         "host rejects descriptor rights",
         [FAKE_NORIGHTS],
-        b"stub rm\r\nstub pm\r\nrust-dos: DPMI host rejected descriptor rights\r\n",
+        b"rust-dos: DPMI host rejected descriptor rights\r\n",
     ),
     (
         "host rejects code descriptor rights only",
         [FAKE_CODERIGHTS],
-        b"stub rm\r\nstub pm\r\nrust-dos: DPMI host rejected descriptor rights\r\n",
+        b"rust-dos: DPMI host rejected descriptor rights\r\n",
     ),
     (
         "host rejects descriptor base",
         [FAKE_NOBASE],
-        b"stub rm\r\nstub pm\r\nrust-dos: DPMI host rejected descriptor setup\r\n",
+        b"rust-dos: DPMI host rejected descriptor setup\r\n",
     ),
     (
         "host rejects descriptor limit",
         [FAKE_NOLIMIT],
-        b"stub rm\r\nstub pm\r\nrust-dos: DPMI host rejected descriptor setup\r\n",
+        b"rust-dos: DPMI host rejected descriptor setup\r\n",
     ),
 ]
 HANDSHAKE = b"\xff\x00"
@@ -214,7 +205,7 @@ def capture(mount, port, commands, wanted):
         "-c",
         "c:",
     ]
-    for line in [*commands, "hello"]:
+    for line in [*commands, "hello > com1"]:
         command += ["-c", line]
     log = tempfile.NamedTemporaryFile(prefix="dosbox-", suffix=".log", delete=False)
     env = dict(os.environ)
@@ -263,7 +254,6 @@ def capture(mount, port, commands, wanted):
 
 
 def check(name, captured, wanted):
-    payload = captured[len(HANDSHAKE) :] if captured.startswith(HANDSHAKE) else captured
     print(f"[{name}] captured {len(captured)} bytes: {captured[:200]!r}")
 
     if not captured.startswith(HANDSHAKE):
@@ -272,8 +262,14 @@ def check(name, captured, wanted):
             file=sys.stderr,
         )
         return 1
-    if wanted not in payload:
-        print(f"FAIL [{name}]: COM1 never received {wanted!r}", file=sys.stderr)
+    payload = captured
+    while payload.startswith(HANDSHAKE):
+        payload = payload[len(HANDSHAKE) :]
+    if payload != wanted:
+        print(
+            f"FAIL [{name}]: COM1 expected exactly {wanted!r}, got {payload!r}",
+            file=sys.stderr,
+        )
         return 1
     return 0
 

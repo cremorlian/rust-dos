@@ -4,8 +4,6 @@ bits 16
 ; rather than at this code, hence the CS-relative read below.
 
     mov [cs:loadseg], cs        ; real mode allows a write through CS
-    mov si, msg_rm
-    call puts
 
     mov ax, 1687h               ; DPMI detect
     int 2fh
@@ -34,9 +32,6 @@ bits 16
     mov ax, 1                   ; 32-bit client
     call far [cs:entry]
     jc .noswitch
-
-    mov si, msg_pm
-    call puts
 
 ; ---- 16-bit protected mode: build the image's descriptors
 
@@ -222,8 +217,6 @@ entry:  dw 0, 0
 loadseg: dw 0
 saved_ss: dw 0
 saved_sp: dw 0
-msg_rm: db "stub rm", 13, 10, 0
-msg_pm: db "stub pm", 13, 10, 0
 msg_nodpmi: db "rust-dos: no DPMI host found", 13, 10, 0
 msg_no32: db "rust-dos: warning: host reports no 32-bit support", 13, 10, 0
 msg_nomem: db "rust-dos: insufficient memory for the DPMI host", 13, 10, 0
