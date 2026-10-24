@@ -5,4 +5,7 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/cremorlian/rust-dos"
 
+[dependencies]
+dos-pm = { path = "../../dos-pm" }
+
 [workspace]

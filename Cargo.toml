@@ -1,7 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["cargo-dos"]
+members = ["cargo-dos", "dos-pm"]
 
 [workspace.package]
+edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/cremorlian/rust-dos"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
