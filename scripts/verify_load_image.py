@@ -7,6 +7,9 @@ they cannot be falsified independently in a single-section example.
 
 cargo rustc rebuilds the ELF without writing a new hello.exe, so the EXE is
 stale after a cargo rustc run.
+
+Run through scripts/check.py. Do not run this concurrently with
+verify_com1_marker.py: both share the example's build target and hello.exe.
 """
 
 import os

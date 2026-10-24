@@ -4,6 +4,9 @@ DOSBox has no DPMI host, so CWSDPMI is downloaded and loaded first. COM1 is
 captured over nullmodem: Python binds and listens before DOSBox starts, and
 DOSBox is the TCP client, because a program that writes its marker once loses
 it when the reader attaches late.
+
+Run through scripts/check.py. Do not run this concurrently with
+verify_load_image.py: both share the example's build target and hello.exe.
 """
 
 import hashlib
