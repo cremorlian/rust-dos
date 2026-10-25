@@ -61,7 +61,7 @@ pub(crate) fn surface_read(call: &PreparedCall, o: HostOutcome) -> Result<usize,
     if o.host_cf {
         return Err(Error::Dpmi { code: o.host_ax });
     }
-    if call.rmcs.cf & 1 != 0 {
+    if call.rmcs.flags & 1 != 0 {
         return Err(Error::Dos {
             code: call.rmcs.eax as u16,
         });
@@ -73,7 +73,7 @@ pub(crate) fn surface_write(call: &PreparedCall, o: HostOutcome) -> Result<usize
     if o.host_cf {
         return Err(Error::Dpmi { code: o.host_ax });
     }
-    if call.rmcs.cf & 1 != 0 {
+    if call.rmcs.flags & 1 != 0 {
         return Err(Error::Dos {
             code: call.rmcs.eax as u16,
         });
@@ -294,7 +294,7 @@ mod tests {
         let mut rmcs = Rmcs::zeroed();
         rmcs.ecx = 3;
         rmcs.eax = 6;
-        rmcs.cf = 1;
+        rmcs.flags = 1;
         let host_fail = HostOutcome {
             host_cf: true,
             host_ax: 0x8021,
@@ -330,7 +330,7 @@ mod tests {
         let mut rmcs = Rmcs::zeroed();
         rmcs.ecx = 3;
         rmcs.eax = 6;
-        rmcs.cf = 1;
+        rmcs.flags = 1;
         assert_eq!(
             surface_read(&call(rmcs), host_ok()),
             Err(Error::Dos { code: 6 })
@@ -459,7 +459,7 @@ mod tests {
         let mut rmcs = Rmcs::zeroed();
         rmcs.ecx = 3;
         rmcs.eax = 5;
-        rmcs.cf = 1;
+        rmcs.flags = 1;
         assert_eq!(
             surface_write(&call(rmcs), host_ok()),
             Err(Error::Dos { code: 5 })
@@ -471,7 +471,7 @@ mod tests {
         let mut rmcs = Rmcs::zeroed();
         rmcs.ecx = 3;
         rmcs.eax = 5;
-        rmcs.cf = 1;
+        rmcs.flags = 1;
         let host_fail = HostOutcome {
             host_cf: true,
             host_ax: 0x8021,

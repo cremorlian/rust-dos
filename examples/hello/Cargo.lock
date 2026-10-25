@@ -20,4 +20,5 @@ name = "hello"
 version = "0.1.0"
 dependencies = [
  "dos-pm",
+ "embedded-io",
 ]

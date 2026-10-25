@@ -40,6 +40,7 @@ rustflags = [\"-Zunstable-options\", \"-Cdebuginfo=0\"]
 
 [unstable]
 build-std = [\"core\"]
+build-std-features = [\"compiler-builtins-mem\"]
 json-target-spec = true
 
 [target.i486-dos]

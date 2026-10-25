@@ -14,13 +14,15 @@ pub(crate) struct Rmcs {
     pub(crate) edx: u32,
     pub(crate) ecx: u32,
     pub(crate) eax: u32,
-    pub(crate) ds: u16,
+    pub(crate) flags: u16,
     pub(crate) es: u16,
+    pub(crate) ds: u16,
     pub(crate) fs: u16,
     pub(crate) gs: u16,
-    pub(crate) cf: u8,
-    pub(crate) pad: u8,
-    pub(crate) flags: u16,
+    pub(crate) ip: u16,
+    pub(crate) cs: u16,
+    pub(crate) sp: u16,
+    pub(crate) ss: u16,
 }
 
 impl Rmcs {
@@ -34,13 +36,15 @@ impl Rmcs {
             edx: 0,
             ecx: 0,
             eax: 0,
-            ds: 0,
+            flags: 0,
             es: 0,
+            ds: 0,
             fs: 0,
             gs: 0,
-            cf: 0,
-            pad: 0,
-            flags: 0,
+            ip: 0,
+            cs: 0,
+            sp: 0,
+            ss: 0,
         }
     }
 }
@@ -70,6 +74,7 @@ pub(crate) fn execute(call: &mut PreparedCall) -> HostOutcome {
             cf = out(reg_byte) host_cf,
             inlateout("eax") 0x0300u32 => host_ax,
             inlateout("ebx") (call.int_no as u32) => _,
+            inlateout("ecx") 0u32 => _,
             inlateout("edi") rmcs_ptr => _,
             options(nostack),
         );

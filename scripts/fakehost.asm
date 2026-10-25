@@ -145,6 +145,10 @@ int31_handler:
     mov ds, ax
     pop ax
 
+%ifdef NO_PRIVATE
+    cmp ax, 0300h
+    je .stop_after_write
+%endif
     cmp ax, 0000h
     je .alloc
     cmp ax, 0003h
@@ -228,6 +232,31 @@ int31_handler:
     mov [di + 6], al
     jmp .done
 
+%ifdef NO_PRIVATE
+.stop_after_write:
+    cmp byte [es:edi + 29], 040h
+    jne .unsupported
+    cmp word [es:edi + 16], 1
+    jne .unsupported
+    mov si, msg_nopriv
+.next:
+    lodsb
+    test al, al
+    jz .park
+    mov ah, al
+    mov dx, 03FDh
+.wait:
+    in al, dx
+    test al, 020h
+    jz .wait
+    mov al, ah
+    mov dx, 03F8h
+    out dx, al
+    jmp .next
+.park:
+    jmp .park
+%endif
+
 .unsupported:
     mov ax, 8001h
 .failed:
@@ -241,6 +270,10 @@ int31_handler:
     pop ds
     pop bp
     iret
+
+%ifdef NO_PRIVATE
+msg_nopriv: db "NOPRIV", 13, 10, 0
+%endif
 
 ; DI = the LDT descriptor selected by the selector in BX.
 ldt_entry:

@@ -7,5 +7,6 @@ repository = "https://github.com/cremorlian/rust-dos"
 
 [dependencies]
 dos-pm = { path = "../../dos-pm" }
+embedded-io = "=0.7.1"
 
 [workspace]
