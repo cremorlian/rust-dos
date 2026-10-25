@@ -1,6 +1,6 @@
 """Run the local gate in the same order as CI.
 
-The two e2e scripts share the example's build target and hello.exe, so run them
+The e2e scripts share the example's build target and hello.exe, so run them
 through this wrapper rather than concurrently.
 """
 
@@ -16,6 +16,7 @@ STEPS = [
     ("test", ["cargo", "test", "--workspace"]),
     ("load-image e2e", [sys.executable, "scripts/verify_load_image.py"]),
     ("COM1 marker e2e", [sys.executable, "scripts/verify_com1_marker.py"]),
+    ("qemu lane e2e", [sys.executable, "scripts/verify_qemu_freedos.py"]),
 ]
 
 

@@ -14,16 +14,21 @@ write `#[no_std]` Rust, run `cargo run`, it boots in DOS and prints.
 - Python 3 for the verification scripts; they use only the standard library.
 - For the COM1 e2e: `dosbox` or `dosbox-staging` on `PATH`, and network access
   to fetch CWSDPMI.
+- For the qemu lane e2e: `qemu-system-i386` and `mtools` (`mcopy`, `mdel`) on
+  `PATH`, plus network access to fetch FreeDOS and CWSDPMI.
 
 ## Testing
 
 Run every local gate with `python3 scripts/check.py`. It runs format, clippy,
-the Rust tests, and both DOS e2e checks in sequence. The two e2e scripts share
-the example's build target and `hello.exe`; do not run them concurrently.
+the Rust tests, and the e2e checks in sequence. The e2e scripts share the
+example's build target and `hello.exe`; do not run them concurrently.
 
-For testing only, we use [CWSDPMI](http://www.ibiblio.org/pub/micro/pc-stuff/freedos/files/repositories/1.4/tools/cwsdpmi.zip),
-a GPL-2.0 DPMI host, which DOSBox does not provide. It is never part of the
-toolchain or its output. Its terms are in `DOC/CWSDPMI/COPYING.CWS` in the zip.
+For testing only, the DOS lanes use DOSBox Staging, QEMU, FreeDOS, and CWSDPMI.
+All are GPLv2-family test tools and fixtures. They are never linked into or
+distributed with `rust-dos` or its output; they are fetched or invoked as
+separate test dependencies. The toolchain remains MIT OR Apache-2.0.
+Redistributing a bundle or image containing them will carry GPL notice/source
+obligations.
 
 Scenarios that need a host to fail a call use `scripts/fakehost.asm`, a tiny
 host built with a compile-time switch per behaviour. CWSDPMI itself is never
