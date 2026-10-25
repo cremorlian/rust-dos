@@ -52,10 +52,13 @@ FAKE_NOPRIV = "nopriv"
 SCENARIOS = [
     ("host loaded", ["cwsdpmi"], b"hello, dos\r\n", []),
     (
-        "returns to DOS",
+        "returns to DOS with status zero",
         ["cwsdpmi"],
-        b"hello, dos\r\nRETURNED\r\n",
-        ["echo RETURNED>com1"],
+        b"hello, dos\r\nZERO\r\nRETURNED\r\n",
+        [
+            "if not errorlevel 1 echo ZERO>com1",
+            "echo RETURNED>com1",
+        ],
     ),
     ("no host", [], b"rust-dos: no DPMI host found\r\n", []),
     (

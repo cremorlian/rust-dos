@@ -55,6 +55,11 @@ pub(crate) struct PreparedCall {
     pub(crate) int_no: u8,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) struct PreparedExit {
+    pub(crate) eax: u32,
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub(crate) struct HostOutcome {
     pub(crate) host_cf: bool,
@@ -95,11 +100,11 @@ pub(crate) fn execute(_call: &mut PreparedCall) -> HostOutcome {
 }
 
 #[cfg(target_arch = "x86")]
-pub(crate) fn exit_to_dos(code: u8) -> ! {
+pub(crate) fn exit_to_dos(prepared: PreparedExit) -> ! {
     unsafe {
         asm!(
             "int $0x21",
-            in("eax") 0x4C00u32 | code as u32,
+            in("eax") prepared.eax,
             options(nostack),
         );
     }
@@ -110,6 +115,6 @@ pub(crate) fn exit_to_dos(code: u8) -> ! {
 }
 
 #[cfg(not(target_arch = "x86"))]
-pub(crate) fn exit_to_dos(_code: u8) -> ! {
+pub(crate) fn exit_to_dos(_prepared: PreparedExit) -> ! {
     unreachable!("exit_to_dos() terminates a 32-bit x86 DPMI client; host builds stub it out")
 }
