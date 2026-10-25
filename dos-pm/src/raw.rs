@@ -93,3 +93,23 @@ pub(crate) fn execute(_call: &mut PreparedCall) -> HostOutcome {
          that can ever run on a 32-bit x86 DPMI target; host builds stub it out"
     )
 }
+
+#[cfg(target_arch = "x86")]
+pub(crate) fn exit_to_dos(code: u8) -> ! {
+    unsafe {
+        asm!(
+            "int $0x21",
+            in("eax") 0x4C00u32 | code as u32,
+            options(nostack),
+        );
+    }
+
+    loop {
+        core::hint::spin_loop();
+    }
+}
+
+#[cfg(not(target_arch = "x86"))]
+pub(crate) fn exit_to_dos(_code: u8) -> ! {
+    unreachable!("exit_to_dos() terminates a 32-bit x86 DPMI client; host builds stub it out")
+}

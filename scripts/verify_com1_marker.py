@@ -50,48 +50,62 @@ FAKE_NOLIMIT = "nolimit"
 FAKE_NOPRIV = "nopriv"
 
 SCENARIOS = [
-    ("host loaded", ["cwsdpmi"], b"hello, dos\r\n"),
-    ("no host", [], b"rust-dos: no DPMI host found\r\n"),
+    ("host loaded", ["cwsdpmi"], b"hello, dos\r\n", []),
+    (
+        "returns to DOS",
+        ["cwsdpmi"],
+        b"hello, dos\r\nRETURNED\r\n",
+        ["echo RETURNED>com1"],
+    ),
+    ("no host", [], b"rust-dos: no DPMI host found\r\n", []),
     (
         "host without 32-bit",
         [NO32],
         b"rust-dos: warning: host reports no 32-bit support\r\n",
+        [],
     ),
     (
         "host wants more memory than DOS has",
         [FAKE_HUNGRY],
         b"rust-dos: insufficient memory for the DPMI host\r\n",
+        [],
     ),
-    ("host needs no private memory", [FAKE_NOPRIV], b"NOPRIV\r\n"),
+    ("host needs no private memory", [FAKE_NOPRIV], b"NOPRIV\r\n", []),
     (
         "host refuses mode switch",
         [REFUSE],
         b"rust-dos: DPMI host refused mode switch\r\n",
+        [],
     ),
     (
         "no LDT descriptors",
         [FAKE_NODESC],
         b"rust-dos: no LDT descriptors available\r\n",
+        [],
     ),
     (
         "host rejects descriptor rights",
         [FAKE_NORIGHTS],
         b"rust-dos: DPMI host rejected descriptor rights\r\n",
+        [],
     ),
     (
         "host rejects code descriptor rights only",
         [FAKE_CODERIGHTS],
         b"rust-dos: DPMI host rejected descriptor rights\r\n",
+        [],
     ),
     (
         "host rejects descriptor base",
         [FAKE_NOBASE],
         b"rust-dos: DPMI host rejected descriptor setup\r\n",
+        [],
     ),
     (
         "host rejects descriptor limit",
         [FAKE_NOLIMIT],
         b"rust-dos: DPMI host rejected descriptor setup\r\n",
+        [],
     ),
 ]
 HANDSHAKE = b"\xff\x00"
@@ -183,7 +197,7 @@ def free_port():
     return port
 
 
-def capture(mount, port, commands, wanted):
+def capture(mount, port, commands, wanted, after=()):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind(("127.0.0.1", port))
@@ -204,7 +218,7 @@ def capture(mount, port, commands, wanted):
         "-c",
         "c:",
     ]
-    for line in [*commands, "hello > com1"]:
+    for line in [*commands, "hello > com1", *after]:
         command += ["-c", line]
     log = tempfile.NamedTemporaryFile(prefix="dosbox-", suffix=".log", delete=False)
     env = dict(os.environ)
@@ -285,7 +299,7 @@ if __name__ == "__main__":
     shutil.copy(EXE, work / "HELLO.EXE")
 
     failures = 0
-    for name, commands, wanted in SCENARIOS:
-        captured = capture(work, free_port(), commands, wanted)
+    for name, commands, wanted, after in SCENARIOS:
+        captured = capture(work, free_port(), commands, wanted, after)
         failures |= check(name, captured, wanted)
     sys.exit(failures)

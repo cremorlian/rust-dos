@@ -12,7 +12,7 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 pub extern "C" fn _start() -> ! {
     let mut stdout = dos_pm::Stdout;
     stdout.write_all(b"hello, dos\r\n").unwrap();
-    park()
+    dos_pm::exit(0)
 }
 
 fn park() -> ! {
