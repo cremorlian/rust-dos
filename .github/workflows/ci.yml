@@ -15,14 +15,27 @@ concurrency:
 jobs:
   test:
     name: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install nasm
-        run: sudo apt-get update && sudo apt-get install -y nasm
+      - name: Install test dependencies
+        run: >
+          sudo apt-get update && sudo apt-get install -y
+          nasm qemu-system-x86 mtools build-essential
+
+      - name: Build Bochs 3.1
+        run: |
+          curl -L --fail --retry 3 -o /tmp/bochs-3.1.tar.gz \
+            https://downloads.sourceforge.net/project/bochs/bochs/3.1/bochs-3.1.tar.gz
+          echo "14aaf78dbe1337987923fffc4e7a962ae56abcf9a87474ace39e593f9f84ee84  /tmp/bochs-3.1.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/bochs-3.1.tar.gz -C /tmp
+          cd /tmp/bochs
+          ./configure --prefix=/usr --with-nogui
+          make -j"$(nproc)"
+          sudo make install
 
       - name: Install dosbox-staging
         run: |
@@ -59,3 +72,9 @@ jobs:
         env:
           CARGO_HOME: ${{ github.workspace }}/target/ci-cargo-home
           RUSTUP_TOOLCHAIN: nightly-2026-08-08
+
+      - name: Run qemu lane e2e
+        run: python3 scripts/verify_qemu_freedos.py
+
+      - name: Run Bochs lane e2e
+        run: python3 scripts/verify_bochs_freedos.py

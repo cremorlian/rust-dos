@@ -16,6 +16,8 @@ write `#[no_std]` Rust, run `cargo run`, it boots in DOS and prints.
   to fetch CWSDPMI.
 - For the qemu lane e2e: `qemu-system-i386` and `mtools` (`mcopy`, `mdel`) on
   `PATH`, plus network access to fetch FreeDOS and CWSDPMI.
+- For the Bochs lane e2e: `bochs` with its BIOS ROMs under `/usr/share/bochs`,
+  plus `mtools` and network access to fetch FreeDOS and CWSDPMI.
 
 ## Testing
 
@@ -23,12 +25,12 @@ Run every local gate with `python3 scripts/check.py`. It runs format, clippy,
 the Rust tests, and the e2e checks in sequence. The e2e scripts share the
 example's build target and `hello.exe`; do not run them concurrently.
 
-For testing only, the DOS lanes use DOSBox Staging, QEMU, FreeDOS, and CWSDPMI.
-All are GPLv2-family test tools and fixtures. They are never linked into or
-distributed with `rust-dos` or its output; they are fetched or invoked as
-separate test dependencies. The toolchain remains MIT OR Apache-2.0.
-Redistributing a bundle or image containing them will carry GPL notice/source
-obligations.
+For testing only, the DOS lanes use DOSBox Staging, QEMU, Bochs, FreeDOS, and
+CWSDPMI. DOSBox Staging, QEMU, FreeDOS, and CWSDPMI are GPLv2-family; Bochs is
+LGPL-2.0-or-later. They are never linked into or distributed with `rust-dos` or
+its output; they are fetched or invoked as separate test dependencies. The
+toolchain remains MIT OR Apache-2.0. Redistributing a bundle or image containing
+them will carry their notice/source obligations.
 
 Scenarios that need a host to fail a call use `scripts/fakehost.asm`, a tiny
 host built with a compile-time switch per behaviour. CWSDPMI itself is never

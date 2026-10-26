@@ -9,7 +9,6 @@ Run through scripts/check.py. Do not run this concurrently with the other e2e
 scripts: they share the example's build target and hello.exe.
 """
 
-import hashlib
 import os
 import pathlib
 import re
@@ -19,29 +18,14 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.request
-import zipfile
+
+from cwsdpmi import cwsdpmi
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 HELLO = REPO / "examples/hello"
 CONSUMER_CONFIG = HELLO / ".cargo/config.toml"
 CARGO_DOS = REPO / "target/debug/cargo-dos"
 EXE = HELLO / "hello.exe"
-
-CWSDPMI_SHA256 = "2de899fecaa90632b8b9bdfc0305cb0375e59ae252c37e32d06c1ed3f98a8f44"
-CWSDPMI_SOURCES = (
-    (
-        "https://www.delorie.com/pub/djgpp/current/v2misc/csdpmi7b.zip",
-        "deacda0488e1cdd7c4a9f32fab45662b34c0ed6b2d7d4d13bc07041b62004a8c",
-        "bin/CWSDPMI.EXE",
-    ),
-    (
-        "http://www.ibiblio.org/pub/micro/pc-stuff/freedos/files/repositories"
-        "/1.4/tools/cwsdpmi.zip",
-        "6ae65336f780e54dee889b5ac865992cf72738717aff5565ef84ccba3459e141",
-        "BIN/CWSDPMI.EXE",
-    ),
-)
 
 # A tiny DPMI host built from scripts/fakehost.asm and staged as a .COM. It is
 # a host by the spec's contract, just one whose behaviour we choose. Builds
@@ -126,36 +110,6 @@ DOSBOX = next(
 CONNECT_TIMEOUT = 30.0
 READ_TIMEOUT = 2.0
 RUN_TIMEOUT = 30.0
-
-
-def cwsdpmi(cache):
-    zip_path = cache / "cwsdpmi.zip"
-    errors = []
-    for url, sha256, member in CWSDPMI_SOURCES:
-        try:
-            with urllib.request.urlopen(url, timeout=60) as response:
-                zip_path.write_bytes(response.read())
-        except OSError as error:
-            errors.append(f"{url}: {error}")
-            continue
-
-        digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
-        if digest != sha256:
-            errors.append(f"{url}: sha256 {digest}, expected {sha256}")
-            continue
-
-        with zipfile.ZipFile(zip_path) as archive:
-            extracted = pathlib.Path(archive.extract(member, cache))
-
-        digest = hashlib.sha256(extracted.read_bytes()).hexdigest()
-        if digest != CWSDPMI_SHA256:
-            errors.append(
-                f"{url}: CWSDPMI.EXE sha256 {digest}, expected {CWSDPMI_SHA256}"
-            )
-            continue
-        return extracted
-
-    raise SystemExit("could not fetch CWSDPMI:\n" + "\n".join(errors))
 
 
 def build_fakehost(work):
