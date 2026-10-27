@@ -18,6 +18,7 @@ STEPS = [
     ("COM1 marker e2e", [sys.executable, "scripts/verify_com1_marker.py"]),
     ("qemu lane e2e", [sys.executable, "scripts/verify_qemu_freedos.py"]),
     ("bochs lane e2e", [sys.executable, "scripts/verify_bochs_freedos.py"]),
+    ("dosemu2 native e2e", [sys.executable, "scripts/verify_dosemu2.py"]),
 ]
 
 

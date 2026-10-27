@@ -26,6 +26,13 @@ jobs:
           sudo apt-get update && sudo apt-get install -y
           nasm qemu-system-x86 mtools build-essential
 
+      - name: Install dosemu2
+        run: |
+          sudo add-apt-repository -y ppa:dosemu2/ppa
+          sudo apt-get update
+          sudo apt-get install -y dosemu2
+          dosemu --version
+
       - name: Build Bochs 3.1
         run: |
           curl -L --fail --retry 3 -o /tmp/bochs-3.1.tar.gz \
@@ -78,3 +85,6 @@ jobs:
 
       - name: Run Bochs lane e2e
         run: python3 scripts/verify_bochs_freedos.py
+
+      - name: Run dosemu2 native e2e
+        run: python3 scripts/verify_dosemu2.py
