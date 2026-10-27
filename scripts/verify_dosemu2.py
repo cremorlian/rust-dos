@@ -1,8 +1,10 @@
-"""Run hello on dosemu2's native DPMI and assert the console transcript.
+"""Run hello twice on dosemu2's native DPMI and assert the console transcript.
 
-The lane uses dosemu2's built-in FDPP/comcom64 DOS, not a FreeDOS floppy.
-It shares examples/hello/hello.exe with the other DOS e2e lanes, so run it
-through scripts/check.py rather than concurrently with the other e2e scripts.
+The two runs share one DOS session, proving the first exits cleanly enough to
+run the second. The lane uses dosemu2's built-in FDPP/comcom64 DOS, not a
+FreeDOS floppy. It shares examples/hello/hello.exe with the other DOS e2e
+lanes, so run it through scripts/check.py rather than concurrently with the
+other e2e scripts.
 """
 
 import pathlib
@@ -21,6 +23,8 @@ RUN_BAT = (
     "@echo off\r\n"
     "hello.exe\r\n"
     "if not errorlevel 1 echo ZERO\r\n"
+    "hello.exe\r\n"
+    "if not errorlevel 1 echo ZERO\r\n"
     "exitemu\r\n"
 )
 
@@ -29,7 +33,7 @@ CONFIG = (
     '$_cpu_vm_dpmi = "emulated"\n'
 )
 
-EXPECTED = [b"hello, dos", b"ZERO"]
+EXPECTED = [b"hello, dos", b"ZERO", b"hello, dos", b"ZERO"]
 
 
 def prepare_lane():
