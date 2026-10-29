@@ -1,3 +1,4 @@
+pub mod artifact;
 pub mod elf;
 pub mod fixups;
 pub mod init;

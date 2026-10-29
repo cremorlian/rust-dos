@@ -1,10 +1,28 @@
 # rust-dos
 
-**Work in progress.** Nothing here is stable; the toolchain does not yet
-produce a bootable DOS program.
+**Early-stage.** The toolchain builds a DOS executable; compatibility is not
+yet guaranteed.
 
-An integrated toolchain for building DOS applications with Rust:
-write `#[no_std]` Rust, run `cargo run`, it boots in DOS and prints.
+An integrated toolchain for building DOS applications with Rust.
+
+## Quickstart
+
+Install the toolchain from this repository:
+
+```console
+cargo install --path cargo-dos --locked
+```
+
+In a `#![no_std]` Rust binary crate:
+
+```console
+cargo dos init
+cargo dos build
+```
+
+`cargo dos build` writes `<crate>.exe` next to each built ELF under Cargo's
+target directory. Run that EXE in a DPMI-capable DOS host, such as dosemu2 or
+DOSBox with CWSDPMI.
 
 ## Requirements
 
@@ -25,7 +43,7 @@ write `#[no_std]` Rust, run `cargo run`, it boots in DOS and prints.
 
 Run every local gate with `python3 scripts/check.py`. It runs format, clippy,
 the Rust tests, and the e2e checks in sequence. The e2e scripts share the
-example's build target and `hello.exe`; do not run them concurrently.
+example's build target and generated EXEs; do not run them concurrently.
 
 For testing only, the DOS lanes use DOSBox Staging, QEMU, Bochs, FreeDOS,
 CWSDPMI, dosemu2, FDPP, comcom64, and dj64. DOSBox Staging, QEMU, FreeDOS,

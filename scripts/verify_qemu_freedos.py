@@ -1,6 +1,6 @@
 """Run hello on qemu + FreeDOS + CWSDPMI and assert the serial transcript.
 
-It shares examples/hello/hello.exe with the other DOS e2e lanes, so run it
+It shares examples/hello/target/i486-dos/debug/hello.exe with the other DOS e2e lanes, so run it
 through scripts/check.py rather than concurrently with the other e2e scripts.
 
 FreeDOS and CWSDPMI are test fixtures only. They are downloaded into target/,

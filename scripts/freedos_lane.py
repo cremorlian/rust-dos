@@ -9,7 +9,7 @@ from cwsdpmi import cwsdpmi
 from fixtures import download
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-EXE = REPO / "examples/hello/hello.exe"
+EXE = REPO / "examples/hello/target/i486-dos/debug/hello.exe"
 
 FREEDOS_URL = "https://download.freedos.org/1.4/FD14-FloppyEdition.zip"
 FREEDOS_SHA256 = "45b1fa7c52dd996c3bfa5e352ffcd410781b952a6ad629f15a4c9ec4bbaefc5a"

@@ -1,42 +1,71 @@
 use std::env;
 use std::fs;
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
-use std::process;
+use std::process::{self, Command, Stdio};
 
-use cargo_dos::{elf, fixups, init, mz, packer, stub};
+use cargo_dos::{artifact, elf, fixups, init, mz, packer, stub};
+use cargo_metadata::Message;
 
 fn main() {
-    match env::args().nth(1).as_deref() {
-        Some("init") => {
-            if let Err(e) = cmd_init() {
-                eprintln!("{e}");
-                process::exit(1);
-            }
-        }
-        Some("postlink") => {
-            if let Err(e) = cmd_postlink() {
-                eprintln!("{e}");
-                process::exit(1);
-            }
-        }
-        _ => {
-            eprintln!("usage: cargo dos [init|postlink]");
-            process::exit(1);
-        }
+    if let Err(e) = run() {
+        eprintln!("{e}");
+        process::exit(1);
     }
 }
 
-fn cmd_postlink() -> Result<(), String> {
-    let input = env::args()
-        .nth(2)
-        .ok_or_else(|| "usage: cargo dos postlink <elf>".to_string())?;
-    let stem = Path::new(&input).file_stem().unwrap_or_default();
-    let out = format!("{}.exe", stem.to_string_lossy());
-    let exe = build_exe(&input)?;
-    fs::write(out, exe).map_err(|e| e.to_string())
+fn run() -> Result<(), String> {
+    let mut args = env::args().skip(1);
+    if args.next().as_deref() != Some("dos") {
+        return Err("usage: cargo dos [init|build]".to_string());
+    }
+
+    match args.next().as_deref() {
+        Some("init") => cmd_init().map_err(|e| e.to_string()),
+        Some("build") => cmd_build(),
+        _ => Err("usage: cargo dos [init|build]".to_string()),
+    }
 }
 
-fn build_exe(input: &str) -> Result<Vec<u8>, String> {
+fn cmd_build() -> Result<(), String> {
+    for elf in cargo_build()? {
+        write_exe(&elf)?;
+    }
+    Ok(())
+}
+
+fn cargo_build() -> Result<Vec<PathBuf>, String> {
+    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let mut child = Command::new(cargo)
+        .args(["build", "--message-format=json-render-diagnostics"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "cargo stdout was not captured".to_string())?;
+    let messages = Message::parse_stream(BufReader::new(stdout))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let status = child.wait().map_err(|e| e.to_string())?;
+    if !status.success() {
+        return Err("cargo build failed".to_string());
+    }
+
+    artifact::executables(messages).map_err(|e| e.to_string())
+}
+
+fn write_exe(elf: &Path) -> Result<(), String> {
+    let exe = elf.with_extension("exe");
+    let bytes = build_exe(elf)?;
+    fs::write(exe, bytes).map_err(|e| e.to_string())
+}
+
+fn build_exe(input: &Path) -> Result<Vec<u8>, String> {
     let bytes = fs::read(input).map_err(|e| e.to_string())?;
     let data = elf::extract(&bytes).map_err(|e| format!("{e:?}"))?;
     let stub = stub::build(data.image.len()).map_err(|e| format!("{e:?}"))?;

@@ -1,6 +1,6 @@
 """Verify the load image starts at the program's own bytes, not the ELF headers.
 
-Re-stamps the spec, runs a real cargo run, checks the linked ELF and hello.exe.
+Re-stamps the spec, runs cargo dos build, checks the linked ELF and hello.exe.
 
 p_vaddr, e_entry, and the fixup site move together when the base changes, so
 they cannot be falsified independently in a single-section example.
@@ -9,7 +9,7 @@ cargo rustc rebuilds the ELF without writing a new hello.exe, so the EXE is
 stale after a cargo rustc run.
 
 Run through scripts/check.py. Do not run this concurrently with the other e2e
-scripts: they share the example's build target and hello.exe.
+scripts: they share the example's build target and generated EXE.
 """
 
 import os
@@ -24,7 +24,7 @@ HELLO = REPO / "examples/hello"
 CARGO_DOS = REPO / "target/debug/cargo-dos"
 CONSUMER_CONFIG = HELLO / ".cargo/config.toml"
 ELF = HELLO / "target/i486-dos/debug/hello"
-EXE = HELLO / "hello.exe"
+EXE = HELLO / "target/i486-dos/debug/hello.exe"
 
 PT_LOAD = 1
 P_TYPE, P_OFFSET, P_VADDR, P_FILESZ = 0, 4, 8, 16
@@ -68,10 +68,15 @@ def run(command, cwd, env):
 def build():
     run(["cargo", "build", "-p", "cargo-dos"], REPO, os.environ.copy())
     home = consumer_cargo_home()
-    run([str(CARGO_DOS), "init"], HELLO, {**os.environ, "CARGO_HOME": str(home)})
+    run(
+        [str(CARGO_DOS), "dos", "init"],
+        HELLO,
+        {**os.environ, "CARGO_HOME": str(home)},
+    )
     env = {**os.environ, "PATH": f"{CARGO_DOS.parent}:{os.environ['PATH']}"}
     run(["cargo", "clean", "--target", "i486-dos"], HELLO, env)
-    run(["cargo", "run"], HELLO, env)
+    EXE.unlink(missing_ok=True)
+    run(["cargo", "dos", "build"], HELLO, env)
 
 
 def load_segment(data):

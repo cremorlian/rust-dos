@@ -6,7 +6,7 @@ DOSBox is the TCP client, because a program that writes its marker once loses
 it when the reader attaches late.
 
 Run through scripts/check.py. Do not run this concurrently with the other e2e
-scripts: they share the example's build target and hello.exe.
+scripts: they share the example's build target and generated EXE.
 """
 
 import os
@@ -25,7 +25,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 HELLO = REPO / "examples/hello"
 CONSUMER_CONFIG = HELLO / ".cargo/config.toml"
 CARGO_DOS = REPO / "target/debug/cargo-dos"
-EXE = HELLO / "hello.exe"
+EXE = HELLO / "target/i486-dos/debug/hello.exe"
 
 # A tiny DPMI host built from scripts/fakehost.asm and staged as a .COM. It is
 # a host by the spec's contract, just one whose behaviour we choose. Builds
@@ -159,10 +159,15 @@ def run(command, cwd, env):
 def build():
     run(["cargo", "build", "-p", "cargo-dos"], REPO, os.environ.copy())
     home = consumer_cargo_home()
-    run([str(CARGO_DOS), "init"], HELLO, {**os.environ, "CARGO_HOME": str(home)})
+    run(
+        [str(CARGO_DOS), "dos", "init"],
+        HELLO,
+        {**os.environ, "CARGO_HOME": str(home)},
+    )
     env = {**os.environ, "PATH": f"{CARGO_DOS.parent}:{os.environ['PATH']}"}
     run(["cargo", "clean", "--target", "i486-dos"], HELLO, env)
-    run(["cargo", "run"], HELLO, env)
+    EXE.unlink(missing_ok=True)
+    run(["cargo", "dos", "build"], HELLO, env)
 
 
 def free_port():

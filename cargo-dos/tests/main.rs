@@ -34,7 +34,7 @@ impl Drop for TempDir {
 
 fn init_in(project: &Path, cargo_home: &Path) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_cargo-dos"))
-        .arg("init")
+        .args(["dos", "init"])
         .current_dir(project)
         .env("CARGO_HOME", cargo_home)
         .output()
@@ -43,11 +43,53 @@ fn init_in(project: &Path, cargo_home: &Path) -> std::process::Output {
 
 fn run_dos(args: &[&str], project: &Path, cargo_home: &Path) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_cargo-dos"))
+        .arg("dos")
         .args(args)
         .current_dir(project)
         .env("CARGO_HOME", cargo_home)
         .output()
         .unwrap()
+}
+
+fn run_dos_with_cargo(
+    args: &[&str],
+    project: &Path,
+    cargo_home: &Path,
+    cargo: &Path,
+) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_cargo-dos"))
+        .arg("dos")
+        .args(args)
+        .current_dir(project)
+        .env("CARGO_HOME", cargo_home)
+        .env("CARGO", cargo)
+        .output()
+        .unwrap()
+}
+
+fn install_fake_cargo(project: &Path, fixture: &[u8]) -> PathBuf {
+    std::fs::write(project.join("fixture-elf"), fixture).unwrap();
+
+    let fake_cargo = project.join("cargo");
+    std::fs::write(
+        &fake_cargo,
+        r#"#!/bin/sh
+set -eu
+mkdir -p target/i486-dos/debug
+cp fixture-elf target/i486-dos/debug/hello
+cat <<EOF
+{"reason":"compiler-artifact","package_id":"hello 0.1.0 (path+file:///tmp/hello)","manifest_path":"/tmp/hello/Cargo.toml","target":{"name":"hello","kind":["bin"],"src_path":"/tmp/hello/src/main.rs"},"profile":{"opt_level":"0","debuginfo":0,"debug_assertions":true,"overflow_checks":true,"test":false},"features":[],"filenames":["$PWD/target/i486-dos/debug/hello"],"executable":"$PWD/target/i486-dos/debug/hello","fresh":false}
+EOF
+"#,
+    )
+    .unwrap();
+
+    use std::os::unix::fs::PermissionsExt;
+    let mut permissions = std::fs::metadata(&fake_cargo).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&fake_cargo, permissions).unwrap();
+
+    fake_cargo
 }
 
 fn restore_writable(path: &std::path::Path) {
@@ -79,7 +121,7 @@ fn missing_cargo_home_prints_error_and_exits_nonzero() {
     std::fs::create_dir_all(&project).unwrap();
 
     let out = Command::new(env!("CARGO_BIN_EXE_cargo-dos"))
-        .arg("init")
+        .args(["dos", "init"])
         .current_dir(&project)
         .env_remove("CARGO_HOME")
         .output()
@@ -105,7 +147,7 @@ fn io_error_surfaces_cleanly_and_exits_one() {
     std::fs::set_permissions(&target_dir, perms).unwrap();
 
     let out = Command::new(env!("CARGO_BIN_EXE_cargo-dos"))
-        .arg("init")
+        .args(["dos", "init"])
         .current_dir(&project)
         .env("CARGO_HOME", &cargo_home)
         .output()
@@ -134,13 +176,13 @@ fn init_scaffolds_a_consumer_project() {
 }
 
 #[test]
-fn postlink_emits_stub_then_image_then_fixup_table_with_self_consistent_header() {
+fn build_writes_packaged_exe_next_to_elf() {
     let tmp = TempDir::new();
     let project = tmp.path().join("project");
     std::fs::create_dir_all(&project).unwrap();
-    std::fs::write(
-        project.join("hello"),
-        fixtures::build_elf(
+    let fake_cargo = install_fake_cargo(
+        &project,
+        &fixtures::build_elf(
             &[(vec![1, 2, 3, 4, 5, 6], 0x400000)],
             &[(
                 0,
@@ -151,17 +193,17 @@ fn postlink_emits_stub_then_image_then_fixup_table_with_self_consistent_header()
                 ],
             )],
         ),
-    )
-    .unwrap();
+    );
 
-    let out = run_dos(
-        &["postlink", "hello"],
+    let out = run_dos_with_cargo(
+        &["build"],
         &project,
         &tmp.path().join("cargo-home"),
+        &fake_cargo,
     );
 
     assert!(out.status.success());
-    let bytes = std::fs::read(project.join("hello.exe")).unwrap();
+    let bytes = std::fs::read(project.join("target/i486-dos/debug/hello.exe")).unwrap();
 
     assert_eq!(&bytes[..2], b"MZ");
 
@@ -265,35 +307,22 @@ fn postlink_emits_stub_then_image_then_fixup_table_with_self_consistent_header()
 }
 
 #[test]
-fn postlink_without_input_arg_prints_usage_and_exits_one() {
+fn build_with_non_elf_input_exits_one_without_panicking() {
     let tmp = TempDir::new();
     let project = tmp.path().join("project");
     std::fs::create_dir_all(&project).unwrap();
+    let fake_cargo = install_fake_cargo(&project, b"definitely not an elf");
 
-    let out = run_dos(&["postlink"], &project, &tmp.path().join("cargo-home"));
-
-    assert_eq!(out.status.code(), Some(1));
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("usage"));
-    assert!(!stderr.contains("thread 'main'"));
-}
-
-#[test]
-fn postlink_with_non_elf_input_exits_one_without_panicking() {
-    let tmp = TempDir::new();
-    let project = tmp.path().join("project");
-    std::fs::create_dir_all(&project).unwrap();
-    std::fs::write(project.join("hello"), b"definitely not an elf").unwrap();
-
-    let out = run_dos(
-        &["postlink", "hello"],
+    let out = run_dos_with_cargo(
+        &["build"],
         &project,
         &tmp.path().join("cargo-home"),
+        &fake_cargo,
     );
 
     assert_eq!(out.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("NotAnElf"));
     assert!(!stderr.contains("thread 'main'"));
-    assert!(!project.join("hello.exe").exists());
+    assert!(!project.join("target/i486-dos/debug/hello.exe").exists());
 }

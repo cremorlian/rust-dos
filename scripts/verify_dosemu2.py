@@ -2,7 +2,7 @@
 
 The two runs share one DOS session, proving the first exits cleanly enough to
 run the second. The lane uses dosemu2's built-in FDPP/comcom64 DOS, not a
-FreeDOS floppy. It shares examples/hello/hello.exe with the other DOS e2e
+FreeDOS floppy. It shares examples/hello/target/i486-dos/debug/hello.exe with the other DOS e2e
 lanes, so run it through scripts/check.py rather than concurrently with the
 other e2e scripts.
 """
@@ -15,7 +15,7 @@ import sys
 REPO = pathlib.Path(__file__).resolve().parent.parent
 WORK = REPO / "target/dosemu2-native"
 STAGE = WORK / "stage"
-EXE = REPO / "examples/hello/hello.exe"
+EXE = REPO / "examples/hello/target/i486-dos/debug/hello.exe"
 DOSEMU = shutil.which("dosemu")
 RUN_TIMEOUT = 60.0
 

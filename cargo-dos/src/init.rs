@@ -43,9 +43,6 @@ build-std = [\"core\"]
 build-std-features = [\"compiler-builtins-mem\"]
 json-target-spec = true
 
-[target.i486-dos]
-runner = [\"cargo-dos\", \"postlink\"]
-
 [env]
 RUST_TARGET_PATH = \"{}\"
 ",

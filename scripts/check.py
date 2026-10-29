@@ -1,6 +1,6 @@
 """Run the local gate in the same order as CI.
 
-The e2e scripts share the example's build target and hello.exe, so run them
+The e2e scripts share the example's build target and generated EXEs, so run them
 through this wrapper rather than concurrently.
 """
 
