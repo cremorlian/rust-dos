@@ -20,6 +20,7 @@ pub fn build_elf(
         segment.p_offset = file_offset;
         segment.p_vaddr = *vaddr;
         segment.p_filesz = data.len() as u64;
+        segment.p_memsz = data.len() as u64;
 
         let section = builder.sections.add();
         section.sh_addralign = 1;

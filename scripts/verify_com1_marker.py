@@ -61,6 +61,20 @@ SCENARIOS = [
             "echo finished>com1",
         ],
     ),
+    (
+        "runs twice in one DOS session",
+        [
+            "cwsdpmi",
+            "hello < input.txt > com1",
+            "if not errorlevel 1 echo exit status 0>com1",
+            "cwsdpmi",
+        ],
+        STDOUT + b"exit status 0\r\n" + STDOUT + b"exit status 0\r\nfinished\r\n",
+        [
+            "if not errorlevel 1 echo exit status 0>com1",
+            "echo finished>com1",
+        ],
+    ),
     ("no host", [], b"rust-dos: no DPMI host found\r\n", []),
     (
         "host without 32-bit",

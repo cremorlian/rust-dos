@@ -15,18 +15,27 @@ pub fn extract(bytes: &[u8]) -> Result<ElfData, Error> {
 fn extract_image(file: &object::read::elf::ElfFile32<'_>) -> Result<Vec<u8>, Error> {
     use object::{Object, ObjectSegment};
 
-    let image_size: u64 = file.segments().map(|s| s.file_range().1).sum();
+    let image_size: u64 = file.segments().map(|s| s.size()).sum();
     if image_size > u64::from(u32::MAX) {
         return Err(Error::ImageTooLarge { image_size });
     }
 
-    let mut image = Vec::new();
+    let mut image = Vec::with_capacity(image_size as usize);
     let mut expected: Option<u64> = None;
 
     for (i, segment) in file.segments().enumerate() {
         let data = segment.data().map_err(|_| Error::NotAnElf)?;
         let offset = segment.file_range().0;
         let filesz = segment.file_range().1;
+        let memsz = segment.size();
+
+        if memsz < filesz {
+            return Err(Error::MemorySizeSmallerThanFileSize {
+                index: i,
+                filesz,
+                memsz,
+            });
+        }
 
         if let Some(expected_offset) = expected
             && offset != expected_offset
@@ -39,6 +48,7 @@ fn extract_image(file: &object::read::elf::ElfFile32<'_>) -> Result<Vec<u8>, Err
         }
         expected = Some(offset + filesz);
         image.extend_from_slice(data);
+        image.resize(image.len() + (memsz - filesz) as usize, 0);
     }
 
     Ok(image)
@@ -52,7 +62,7 @@ fn collect_fixups(file: &object::read::elf::ElfFile32<'_>) -> Result<Vec<u32>, E
     for segment in file.segments() {
         let filesz = segment.file_range().1;
         spans.push((segment.address(), filesz, image_start));
-        image_start += filesz;
+        image_start += segment.size();
     }
 
     let mut fixups = Vec::new();
@@ -104,6 +114,11 @@ pub enum Error {
     ImageTooLarge {
         image_size: u64,
     },
+    MemorySizeSmallerThanFileSize {
+        index: usize,
+        filesz: u64,
+        memsz: u64,
+    },
     UnexpectedSegmentOffset {
         index: usize,
         expected_offset: u64,
@@ -127,6 +142,55 @@ mod tests {
     }
 
     #[test]
+    fn extract_zero_fills_the_bss_gap_to_the_memory_size() {
+        for (data, memsz) in [
+            (vec![1, 2, 3, 4], 4u64),  // min: no BSS
+            (vec![1, 2, 3, 4], 8u64),  // typical: a few zero bytes
+            (vec![0xAB], 0x1_0000u64), // max: a whole zero page
+        ] {
+            let mut elf = fixtures::build_elf(&[(data.clone(), 0x400000)], &[]);
+            elf[0x34 + 20..0x34 + 24].copy_from_slice(&(memsz as u32).to_le_bytes());
+
+            let out = extract(&elf).expect("parse should succeed");
+
+            assert_eq!(out.image.len(), memsz as usize);
+            assert_eq!(&out.image[..data.len()], &data[..]);
+            assert!(out.image[data.len()..].iter().all(|&byte| byte == 0));
+        }
+    }
+
+    #[test]
+    fn extract_rejects_a_segment_whose_memory_size_is_smaller_than_its_file_size() {
+        for memsz in [0u64, 3u64] {
+            let mut elf = fixtures::build_elf(&[(vec![1, 2, 3, 4], 0x400000)], &[]);
+            elf[0x34 + 20..0x34 + 24].copy_from_slice(&(memsz as u32).to_le_bytes());
+
+            assert_eq!(
+                extract(&elf).err(),
+                Some(Error::MemorySizeSmallerThanFileSize {
+                    index: 0,
+                    filesz: 4,
+                    memsz,
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn extract_maps_fixups_past_an_earlier_segments_bss() {
+        let mut elf = fixtures::build_elf(
+            &[(vec![1, 2, 3, 4], 0x400000), (vec![5, 6, 7, 8], 0x400008)],
+            &[(1, &[(0x400008, elf::R_386_32)])],
+        );
+        elf[0x34 + 20..0x34 + 24].copy_from_slice(&8u32.to_le_bytes());
+
+        let data = extract(&elf).expect("parse should succeed");
+
+        assert_eq!(data.image, [1, 2, 3, 4, 0, 0, 0, 0, 5, 6, 7, 8]);
+        assert_eq!(data.fixups, [8]);
+    }
+
+    #[test]
     fn extract_rejects_segment_range_past_end_of_file() {
         let mut elf = fixtures::build_elf(&[(vec![1, 2, 3, 4], 0x400000)], &[]);
         elf[0x34 + 16..0x34 + 16 + 4].copy_from_slice(&(u32::MAX - 1).to_le_bytes());
@@ -138,8 +202,8 @@ mod tests {
     fn extract_rejects_image_larger_than_u32_max() {
         let mut elf =
             fixtures::build_elf(&[(vec![1, 2, 3, 4], 0x400000), (vec![5], 0x400004)], &[]);
-        elf[0x34 + 16..0x34 + 16 + 4].copy_from_slice(&0x8000_0000u32.to_le_bytes());
-        elf[0x54 + 16..0x54 + 16 + 4].copy_from_slice(&0x8000_0000u32.to_le_bytes());
+        elf[0x34 + 20..0x34 + 20 + 4].copy_from_slice(&0x8000_0000u32.to_le_bytes());
+        elf[0x54 + 20..0x54 + 20 + 4].copy_from_slice(&0x8000_0000u32.to_le_bytes());
 
         assert!(matches!(
             extract(&elf),
