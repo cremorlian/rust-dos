@@ -57,7 +57,7 @@ def run_lane():
         try:
             deadline = time.time() + RUN_TIMEOUT
             while time.time() < deadline:
-                if SERIAL.exists() and b"DONE" in SERIAL.read_bytes():
+                if SERIAL.exists() and b"finished" in SERIAL.read_bytes():
                     break
                 if proc.poll() is not None:
                     break

@@ -8,11 +8,10 @@ description = "DOS protected-mode (DPMI) runtime: embedded-io console, exit, hea
 
 [dependencies]
 embedded-io = "=0.7.1"
-embedded-alloc = { version = "=0.7.0", optional = true, default-features = false, features = ["llff"] }
 critical-section = { version = "=1.2.0", optional = true }
 
 [features]
-heap = ["embedded-alloc", "critical-section"]
+heap = ["critical-section"]
 
 [lints]
 workspace = true

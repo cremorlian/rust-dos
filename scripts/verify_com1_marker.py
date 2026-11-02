@@ -41,15 +41,24 @@ FAKE_NOBASE = "nobase"
 FAKE_NOLIMIT = "nolimit"
 FAKE_NOPRIV = "nopriv"
 
+STDOUT = (
+    b"hello from write\r\n"
+    b"hello from write_all\r\n"
+    b"hello from print\r\n"
+    b"hello from println\r\n"
+    b"hello from stdin: stdin input\r\n"
+    b"hello from heap\r\n"
+)
+
 SCENARIOS = [
-    ("host loaded", ["cwsdpmi"], b"hello, dos\r\n", []),
+    ("host loaded", ["cwsdpmi"], STDOUT, []),
     (
         "returns to DOS with status zero",
         ["cwsdpmi"],
-        b"hello, dos\r\nZERO\r\nRETURNED\r\n",
+        STDOUT + b"exit status 0\r\nfinished\r\n",
         [
-            "if not errorlevel 1 echo ZERO>com1",
-            "echo RETURNED>com1",
+            "if not errorlevel 1 echo exit status 0>com1",
+            "echo finished>com1",
         ],
     ),
     ("no host", [], b"rust-dos: no DPMI host found\r\n", []),
@@ -199,7 +208,7 @@ def capture(mount, port, commands, wanted, after=()):
         "-c",
         "c:",
     ]
-    for line in [*commands, "hello > com1", *after]:
+    for line in [*commands, "hello < input.txt > com1", *after]:
         command += ["-c", line]
     log = tempfile.NamedTemporaryFile(prefix="dosbox-", suffix=".log", delete=False)
     env = dict(os.environ)
@@ -275,6 +284,7 @@ if __name__ == "__main__":
     work = REPO / "target/com1-marker"
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
+    (work / "INPUT.TXT").write_bytes(b"stdin input")
     shutil.copy(cwsdpmi(work), work / "CWSDPMI.EXE")
     build_fakehost(work)
     shutil.copy(EXE, work / "HELLO.EXE")

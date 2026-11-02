@@ -53,7 +53,7 @@ def run_lane():
             while time.time() < deadline:
                 if SERIAL.exists():
                     captured = SERIAL.read_bytes()
-                    if captured == EXPECTED or b"DONE" in captured:
+                    if captured == EXPECTED or b"finished" in captured:
                         break
                 if proc.poll() is not None:
                     break

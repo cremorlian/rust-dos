@@ -21,10 +21,10 @@ RUN_TIMEOUT = 60.0
 
 RUN_BAT = (
     "@echo off\r\n"
-    "hello.exe\r\n"
-    "if not errorlevel 1 echo ZERO\r\n"
-    "hello.exe\r\n"
-    "if not errorlevel 1 echo ZERO\r\n"
+    "hello.exe < INPUT.TXT\r\n"
+    "if not errorlevel 1 echo exit status 0\r\n"
+    "hello.exe < INPUT.TXT\r\n"
+    "if not errorlevel 1 echo exit status 0\r\n"
     "exitemu\r\n"
 )
 
@@ -33,7 +33,26 @@ CONFIG = (
     '$_cpu_vm_dpmi = "emulated"\n'
 )
 
-EXPECTED = [b"hello, dos", b"ZERO", b"hello, dos", b"ZERO"]
+EXPECTED = [
+    b"hello from write",
+    b"hello from write_all",
+    b"hello from print",
+    b"hello from println",
+    b"hello from stdin: stdin input",
+    b"hello from heap",
+    b"hello from eprint",
+    b"hello from eprintln",
+    b"exit status 0",
+    b"hello from write",
+    b"hello from write_all",
+    b"hello from print",
+    b"hello from println",
+    b"hello from stdin: stdin input",
+    b"hello from heap",
+    b"hello from eprint",
+    b"hello from eprintln",
+    b"exit status 0",
+]
 
 
 def prepare_lane():
@@ -44,6 +63,7 @@ def prepare_lane():
 
     STAGE.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(EXE, STAGE / "HELLO.EXE")
+    (STAGE / "INPUT.TXT").write_bytes(b"stdin input")
     (STAGE / "RUN.BAT").write_bytes(RUN_BAT.encode("ascii"))
     config = WORK / "dosemu.conf"
     config.write_text(CONFIG, encoding="ascii")

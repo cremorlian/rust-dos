@@ -6,7 +6,8 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/cremorlian/rust-dos"
 
 [dependencies]
-dos-pm = { path = "../../dos-pm" }
+dos-pm = { path = "../../dos-pm", features = ["heap"] }
+embedded-alloc = { version = "=0.7.0", default-features = false, features = ["llff"] }
 embedded-io = "=0.7.1"
 
 [workspace]

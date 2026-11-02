@@ -15,14 +15,23 @@ FREEDOS_URL = "https://download.freedos.org/1.4/FD14-FloppyEdition.zip"
 FREEDOS_SHA256 = "45b1fa7c52dd996c3bfa5e352ffcd410781b952a6ad629f15a4c9ec4bbaefc5a"
 FREEDOS_MEMBER = "144m/x86BOOT.img"
 
-EXPECTED = b"hello, dos\r\nZERO\r\nDONE\r\n"
+EXPECTED = (
+    b"hello from write\r\n"
+    b"hello from write_all\r\n"
+    b"hello from print\r\n"
+    b"hello from println\r\n"
+    b"hello from stdin: stdin input\r\n"
+    b"hello from heap\r\n"
+    b"exit status 0\r\n"
+    b"finished\r\n"
+)
 
 AUTOEXEC = (
     "@echo off\r\n"
     "cwsdpmi\r\n"
-    "hello > com1\r\n"
-    "if not errorlevel 1 echo ZERO>com1\r\n"
-    "echo DONE>com1\r\n"
+    "hello < input.txt > com1\r\n"
+    "if not errorlevel 1 echo exit status 0>com1\r\n"
+    "echo finished>com1\r\n"
 )
 
 FDCONFIG = (
@@ -63,11 +72,14 @@ def prepare_lane(work):
     cwsd = cwsdpmi(downloads)
     autoexec = work / "AUTOEXEC.BAT"
     fdconfig = work / "FDCONFIG.SYS"
+    input_file = work / "INPUT.TXT"
     autoexec.write_bytes(AUTOEXEC.encode("ascii"))
     fdconfig.write_bytes(FDCONFIG.encode("ascii"))
+    input_file.write_bytes(b"stdin input")
 
     run(["mcopy", "-o", "-i", str(lane), str(cwsd), "::CWSDPMI.EXE"])
     run(["mcopy", "-o", "-i", str(lane), str(EXE), "::HELLO.EXE"])
+    run(["mcopy", "-o", "-i", str(lane), str(input_file), "::INPUT.TXT"])
     run(["mcopy", "-o", "-i", str(lane), str(autoexec), "::AUTOEXEC.BAT"])
     run(["mcopy", "-o", "-i", str(lane), str(fdconfig), "::FDCONFIG.SYS"])
     subprocess.run(
