@@ -1,10 +1,11 @@
-"""Run hello twice on dosemu2's native DPMI and assert the console transcript.
+"""Run hello three times on dosemu2's native DPMI and assert the console transcript.
 
-The two runs share one DOS session, proving the first exits cleanly enough to
-run the second. The lane uses dosemu2's built-in FDPP/comcom64 DOS, not a
-FreeDOS floppy. It shares examples/hello/target/i486-dos/debug/hello.exe with the other DOS e2e
-lanes, so run it through scripts/check.py rather than concurrently with the
-other e2e scripts.
+The runs share one DOS session, proving each exits cleanly enough to run the
+next. The third run passes command-line arguments. The lane uses dosemu2's
+built-in FDPP/comcom64 DOS, not a FreeDOS floppy. It shares
+examples/hello/target/i486-dos/debug/hello.exe with the other DOS e2e lanes, so
+run it through scripts/check.py rather than concurrently with the other e2e
+scripts.
 """
 
 import pathlib
@@ -24,6 +25,8 @@ RUN_BAT = (
     "hello.exe < INPUT.TXT\r\n"
     "if not errorlevel 1 echo exit status 0\r\n"
     "hello.exe < INPUT.TXT\r\n"
+    "if not errorlevel 1 echo exit status 0\r\n"
+    "hello.exe alpha beta < INPUT.TXT\r\n"
     "if not errorlevel 1 echo exit status 0\r\n"
     "exitemu\r\n"
 )
@@ -51,6 +54,8 @@ EXPECTED = [
     b"hello from heap",
     b"hello from eprint",
     b"hello from eprintln",
+    b"exit status 0",
+    b"args: alpha beta",
     b"exit status 0",
 ]
 

@@ -75,6 +75,22 @@ SCENARIOS = [
             "echo finished>com1",
         ],
     ),
+    (
+        "reads command-line arguments",
+        ["cwsdpmi"],
+        STDOUT
+        + b"exit status 0\r\n"
+        + b"args: alpha beta\r\n"
+        + b"exit status 0\r\n"
+        + b"finished\r\n",
+        [
+            "if not errorlevel 1 echo exit status 0>com1",
+            "cwsdpmi",
+            "hello alpha beta < input.txt > com1",
+            "if not errorlevel 1 echo exit status 0>com1",
+            "echo finished>com1",
+        ],
+    ),
     ("no host", [], b"rust-dos: no DPMI host found\r\n", []),
     (
         "host without 32-bit",

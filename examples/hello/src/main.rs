@@ -17,6 +17,22 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
     let mut stdout = dos_pm::Stdout;
+    match dos_pm::args_bytes() {
+        Ok(args) => {
+            let mut tokens = args.iter().peekable();
+            if tokens.peek().is_some() {
+                stdout.write_all(b"args:").unwrap();
+                for token in tokens {
+                    stdout.write_all(b" ").unwrap();
+                    stdout.write_all(token).unwrap();
+                }
+                stdout.write_all(b"\r\n").unwrap();
+                dos_pm::exit(0);
+            }
+        }
+        Err(_) => dos_pm::exit(1),
+    }
+
     stdout.write(b"hello from write\r\n").unwrap();
     stdout.write_all(b"hello from write_all\r\n").unwrap();
     dos_pm::print!("hello from print\r\n");

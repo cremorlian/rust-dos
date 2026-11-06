@@ -100,6 +100,18 @@ pub(crate) fn execute(_call: &mut PreparedCall) -> HostOutcome {
 }
 
 #[cfg(target_arch = "x86")]
+pub(crate) fn copy_linear(linear: u32, dst: &mut [u8]) {
+    unsafe {
+        core::ptr::copy_nonoverlapping(linear as *const u8, dst.as_mut_ptr(), dst.len());
+    }
+}
+
+#[cfg(not(target_arch = "x86"))]
+pub(crate) fn copy_linear(_linear: u32, _dst: &mut [u8]) {
+    unreachable!("copy_linear() reads 32-bit x86 memory; host builds stub it out")
+}
+
+#[cfg(target_arch = "x86")]
 pub(crate) fn exit_to_dos(prepared: PreparedExit) -> ! {
     unsafe {
         asm!(

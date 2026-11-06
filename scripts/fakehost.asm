@@ -234,6 +234,12 @@ int31_handler:
 
 %ifdef NO_PRIVATE
 .stop_after_write:
+    cmp byte [es:edi + 29], 062h
+    jne .not_get_psp
+    mov ax, cs
+    mov [es:edi + 16], ax
+    jmp .done
+.not_get_psp:
     cmp byte [es:edi + 29], 040h
     jne .unsupported
     cmp word [es:edi + 16], 1

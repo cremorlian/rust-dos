@@ -23,6 +23,8 @@ EXPECTED = (
     b"hello from stdin: stdin input\r\n"
     b"hello from heap\r\n"
     b"exit status 0\r\n"
+    b"args: alpha beta\r\n"
+    b"exit status 0\r\n"
     b"finished\r\n"
 )
 
@@ -30,6 +32,9 @@ AUTOEXEC = (
     "@echo off\r\n"
     "cwsdpmi\r\n"
     "hello < input.txt > com1\r\n"
+    "if not errorlevel 1 echo exit status 0>com1\r\n"
+    "cwsdpmi\r\n"
+    "hello alpha beta < input.txt > com1\r\n"
     "if not errorlevel 1 echo exit status 0>com1\r\n"
     "echo finished>com1\r\n"
 )
